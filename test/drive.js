@@ -1,0 +1,57 @@
+// Touch-input test: title -> garage -> job board -> drive, all by tapping
+const puppeteer = require('puppeteer-core'), path = require('path');
+const OUT = '/tmp/claude-0/-home-claude/936babd9-14ae-5cd0-b1bf-6401ea6ac088/scratchpad/shots';
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+(async () => {
+  const b = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome', headless: 'new', args: ['--no-sandbox', '--use-gl=swiftshader'] });
+  const p = await b.newPage();
+  await p.setViewport({ width: 800, height: 360, deviceScaleFactor: 2, isMobile: true, hasTouch: true, isLandscape: true });
+  const errs = []; p.on('pageerror', e => errs.push(e.message)); p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
+  await p.goto('file://' + path.join(__dirname, '..', 'dist', 'index.html')); await p.evaluate(() => localStorage.clear()); await p.reload();
+  await sleep(1000);
+  const cdp = await p.target().createCDPSession();
+  const box = sel => p.evaluate(s => { const e = document.querySelector(s); if (!e) return null; const r = e.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2, r.top, r.bottom]; }, sel);
+  const touch = (type, pts) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts.map((q, i) => ({ x: q[0], y: q[1], id: q[2] === undefined ? i : q[2] })) });
+  const tap = async sel => { const r = await box(sel); if (!r) { console.log('MISSING', sel); return; } await touch('touchStart', [[r[0], r[1]]]); await touch('touchEnd', []); await sleep(150); };
+  const st = () => p.evaluate(() => __game.state);
+  await tap('#oCont'); console.log('after title:', await st());
+  await tap('.gtab[data-k="engine"]'); console.log('tab:', await p.evaluate(() => __game.gTab));
+  await tap('#gNext'); console.log('truck:', await p.evaluate(() => __game.gid)); await tap('#gPrev');
+  await tap('#gGo'); console.log('after go:', await st());
+  await tap('.job:not(.dis):not(.on)'); console.log('job:', await p.evaluate(() => __game.jobSel));
+  await tap('#oStart'); await sleep(400); console.log('after start:', await st(), 'cargo', await p.evaluate(() => __game.truck.cargoType), 'card:', await p.evaluate(() => !document.getElementById('fork').hidden));
+  await tap('#forkOpts .fo'); console.log('picked road:', await p.evaluate(() => __game.trip.decisions.map(d => d.edge).join(',')));
+  const [gx, , gt] = await box('#pGas');
+  await touch('touchStart', [[gx, gt + 8, 7]]);
+  for (let i = 0; i < 12; i++) { await sleep(500); await touch('touchMove', [[gx, gt + 8, 7]]); }
+  let s = await p.evaluate(() => __z.state());
+  console.log('after 6s gas: x=%s km/h=%s gear=%s rpm=%s coup=%s items=%s', s.x.toFixed(1), (s.v * 3.6).toFixed(1), s.gear, s.rpm.toFixed(0), s.coup, s.items);
+  await p.screenshot({ path: OUT + '/drive_moving.png' });
+  await touch('touchEnd', []);
+  const [bx, , bt] = await box('#pBrake');
+  await touch('touchStart', [[bx, bt + 8, 3]]); await sleep(2500); await touch('touchEnd', []);
+  s = await p.evaluate(() => __z.state()); console.log('after braking km/h=%s hold=%s', (s.v * 3.6).toFixed(1), await p.evaluate(() => __game.truck.holding));
+  await tap('#tAwd'); await tap('#tDiff'); await tap('#tLights');
+  console.log('awd/diff/lights:', await p.evaluate(() => { const t = __game.truck; return [t.awd, t.diff, t.lights].join(','); }));
+  const [tx, , tt, tb] = await box('#tTrack');
+  await touch('touchStart', [[tx, tb - 2, 9]]); await touch('touchMove', [[tx, tb + 5, 9]]); await touch('touchEnd', []);
+  console.log('tire target:', await p.evaluate(() => __game.truck.pTarget.toFixed(2)), 'ctis:', await p.evaluate(() => __game.truck.hasCtis));
+  // the knob: grab it (manual), push it through the gate to the next gear; AUTO back on from its side button
+  const kb = await box('#knob');
+  const kx = await p.evaluate(() => { const K = __game.hud.knob, r = K.cv.getBoundingClientRect(), L = K.lay(); return [r.left + L.cx, r.top + L.cy]; });
+  await touch('touchStart', [[kx[0], kx[1], 5]]); await sleep(120); await touch('touchEnd', []); await sleep(200);
+  console.log('mode after grabbing the knob:', await p.evaluate(() => __game.truck.mode + __game.truck.gearLabel()));
+  await p.keyboard.press('e'); await sleep(1400); console.log('gear after one push up:', await p.evaluate(() => __game.truck.mode + __game.truck.gearLabel()));
+  await p.keyboard.press('d'); await sleep(200); console.log('mode after AUTO:', await p.evaluate(() => __game.truck.mode));
+  await tap('#bMenu'); console.log('after Menu:', await st());
+  await tap('#oResume'); console.log('after Resume:', await st());
+  await p.evaluate(() => window.onAndroidBack()); console.log('after back:', await st());
+  await tap('#bMenu'); await tap('#oAbandon'); console.log('abandon armed:', await p.evaluate(() => document.querySelector('#oAbandon').classList.contains('arm')), await st());
+  await tap('#oAbandon'); console.log('after abandon:', await st(), await p.evaluate(() => __game.job.kind + ' cargo ' + __game.truck.cargoType + ' fee ' + __game.feeCost));
+  await tap('#bMenu'); await tap('#oLeave'); console.log('after leave:', await st(), await p.evaluate(() => document.querySelector('#ov h1').textContent));
+  await tap('#oGar'); console.log('after continue:', await st(), await p.evaluate(() => __game.whereText() + ' | go: ' + document.getElementById('gGo').textContent));
+  const ft = await p.evaluate(() => { __z.start({ truck: 'cc', job: 'pulp', to: 'mill', weather: 'snow', time: 'dusk', roads: ['e1', 'e2', 'e3'] }); __z.teleport(__z.roadX('e3', 500)); return new Promise(res => { let n = 0, t0 = performance.now(); const f = () => { if (++n < 90) requestAnimationFrame(f); else res((performance.now() - t0) / n); }; requestAnimationFrame(f); }); });
+  console.log('avg frame ms (software rendering):', ft.toFixed(1));
+  console.log(errs.length ? 'ERRORS ' + [...new Set(errs)].join(' | ') : 'no errors');
+  await b.close();
+})();

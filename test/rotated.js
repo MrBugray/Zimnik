@@ -1,0 +1,31 @@
+const puppeteer = require('puppeteer-core'), path = require('path');
+const OUT = '/tmp/claude-0/-home-claude/936babd9-14ae-5cd0-b1bf-6401ea6ac088/scratchpad/shots';
+(async () => {
+  const b = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome', headless: 'new', args: ['--no-sandbox', '--use-gl=swiftshader'] });
+  const p = await b.newPage();
+  await p.setViewport({ width: 380, height: 800, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+  const errs = []; p.on('pageerror', e => errs.push(e.message));
+  await p.goto('file://' + path.join(__dirname, '..', 'dist', 'index.html'));
+  await new Promise(r => setTimeout(r, 900));
+  const cdp = await p.target().createCDPSession();
+  const touch = (type, pts) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts.map((q, i) => ({ x: q[0], y: q[1], id: q[2] ?? i })) });
+  const rect = sel => p.evaluate(s => { const r = document.querySelector(s).getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom }; }, sel);
+  let r = await rect('#oCont'); await touch('touchStart', [[(r.l + r.r) / 2, (r.t + r.b) / 2]]); await touch('touchEnd', []);
+  await new Promise(res => setTimeout(res, 300));
+  console.log('after title:', await p.evaluate(() => __game.state));
+  await p.evaluate(() => __z.start({ truck: 'cc', job: 'pulp', to: 'mill', auto: true }));
+  await new Promise(res => setTimeout(res, 300));
+  console.log('rotated:', await p.evaluate(() => document.getElementById('app').classList.contains('rot')), 'state:', await p.evaluate(() => __z.state().state));
+  // press near the pedal's own top (rotated: right side of its screen box)
+  r = await rect('#pGas');
+  await touch('touchStart', [[r.r - 8, (r.t + r.b) / 2, 5]]);
+  await new Promise(res => setTimeout(res, 120));
+  console.log('throttle at pedal top:', await p.evaluate(() => __game.hud.touchIn.throttle.toFixed(2)));
+  await touch('touchMove', [[r.l + 6, (r.t + r.b) / 2, 5]]);
+  await new Promise(res => setTimeout(res, 120));
+  console.log('throttle at pedal bottom:', await p.evaluate(() => __game.hud.touchIn.throttle.toFixed(2)));
+  await touch('touchEnd', []);
+  await p.screenshot({ path: OUT + '/rotated.png' });
+  console.log(errs.length ? 'ERRORS ' + errs.join(' | ') : 'no errors');
+  await b.close();
+})();

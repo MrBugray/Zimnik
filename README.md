@@ -2,8 +2,14 @@
 
 Offline 2D trucking game for Android (HTML5 canvas + planck.js physics, wrapped in a tiny WebView app).
 
+## Game modes
+The welcome screen asks how you want to play. **Sandbox** unlocks every truck, upgrade, add-on and paint for free
+(you still pay for fuel, repairs and tows). **Normal** is the economy game: you start with the Polaris and 3,000 ₽,
+and every truck (Bars 24,000 ₽, Skinnerd 38,000 ₽, Skinnerd tractor 52,000 ₽), upgrade and add-on has its price.
+The choice is kept in the save and can be changed later from the title screen or the pause menu.
+
 ## The world
-Twelve places (yards) and five junctions joined by 28 roads, three of them hidden until you find them. A drive is
+Twelve places (yards) and five junctions joined by 31 roads, three of them hidden until you find them. A drive is
 built as you go: the start yard, a road, the next junction pad, the road you pick there, and so on until the yard you
 are heading for, which ends in a wall, a fence or the riverbank. Every road can be driven both ways. Trucks stay
 where they finish; each place has its own job board, driven by what the places make and need.
@@ -11,6 +17,11 @@ where they finish; each place has its own job board, driven by what the places m
 Two steel bridges cross the Zimnyaya for rigs the ice will not carry in the thaw: the Bridge road from the bridge
 junction to Sosnovka (1.6 km, against 0.5 km over the Sosnovka crossing) and the East bridge road from the pulp mill
 to Zarechye (1.0 km, against 0.56 km over the Zarechye crossing). Longer, but they never crack.
+
+Three roads are harder than the rest. The **Hill road** from the camp to the cutting (1.08 km) climbs in stepped
+ramps of up to 28% through rock and drifts. The **Ice crossing** from Lesnoy to the port (0.95 km) drops off the
+forest bank onto 340 m of river ice with a weight limit — crack through and you swim. The **Quarry ridge** from the
+gravel pit to the railhead (0.7 km) is a rocky track with glazed-ice patches.
 
 ## Gears: the knob
 There is no low range any more: the gearboxes do the crawling (the Bars has a deep first gear for it). The right of
@@ -166,5 +177,4 @@ Saves live in the WebView's localStorage under `zimnik.v2` (older saves are migr
     node test/v06.js                                                              # old save, lamps, both exhausts, tyre shading, bridges, map
     node test/v07.js                                                              # knob, reverse gears, over-rev, leave/tow/fetch, deadlines, weather
     node test/v09.js                                                              # the Polaris, both bodies: liveries, rims, cage, rack, sliders, bull bar, off-road wheels, loads, beacon
-#   Z i m n i k  
- 
+    node test/modes.js                                                            # welcome screen, sandbox/normal, buying trucks, the new roads
