@@ -14,7 +14,7 @@ class WorldRenderer {
   // ---------- terrain: cached 24 m chunks blitted at whole pixels ----------
   drawTerrain(ctx, R, P, c, L, env) {
     const x0 = R.vx0 - 0.5, x1 = R.vx1 + 0.5, k0 = Math.floor(x0 / TCW), k1 = Math.floor(x1 / TCW);
-    const ppm = SPR.ppmQ(R.ppm), ver = R.palVer + '@' + ppm.toFixed(2) + ':' + Math.round((env.extraSnow || 0) * 40);
+    const ppm = SPR.ppmQ(R.ppm), ver = R.palVer + '@' + ppm.toFixed(2) + ':' + Math.round((env.extraSnow || 0) * 6);
     if (!c.uid) c.uid = ++DECOR_UID;
     ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = this.tcol(P, 'soilDeep');
@@ -40,7 +40,7 @@ class WorldRenderer {
   // render the chunk the camera is heading into while this frame still has budget left, so it never pops in mid-frame
   prefetch(R, P, c, L, env, dir) {
     if (SPR.spent > SPR.budgetMs * 0.5) return;
-    const ppm = SPR.ppmQ(R.ppm), ver = R.palVer + '@' + ppm.toFixed(2) + ':' + Math.round((env.extraSnow || 0) * 40);
+    const ppm = SPR.ppmQ(R.ppm), ver = R.palVer + '@' + ppm.toFixed(2) + ':' + Math.round((env.extraSnow || 0) * 6);
     const k = dir >= 0 ? Math.floor((R.vx1 + 0.5) / TCW) + 1 : Math.floor((R.vx0 - 0.5) / TCW) - 1;
     if (!SPR.has(this.chunkKey(c, k), ver)) this.terrainSprite(R, P, c, L, env, k, ppm, ver);
   }
@@ -308,7 +308,8 @@ class WorldRenderer {
       for (let i = 0; i <= 8; i++) { const x = i / 8 * W; g.addColorStop(i / 8, css(P.fogc, a(x - tx))); }
       ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
     } else if (wash > 0) { ctx.fillStyle = css(P.fogc, wash); ctx.fillRect(0, 0, W, H); }
-    const want = Math.round(w.part * 300 * R.quality);
+    // in thick weather the fog hides most of the fall anyway: fewer, it reads the same
+    const want = Math.round(w.part * 300 * R.quality * (w.vis < 70 ? 0.6 : 1));
     const F = this.flakes; while (F.length < want) F.push({ x: Math.random() * W, y: Math.random() * H, z: 0.25 + Math.random() * 0.75, ph: Math.random() * TAU }); if (F.length > want) F.length = want;
     if (!F.length) return;
     const wind = (env.wind || 0), sleet = !!w.sleet;

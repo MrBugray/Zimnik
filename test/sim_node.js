@@ -79,6 +79,37 @@ if (scen === 'route') {
   for (let i = 0; i < 120 * 30; i++) { s.step(1 / 120, { throttle: tr.vF * 3.6 < ${kmh || 30} ? 1 : 0, brake: 0 }); maxX = Math.max(maxX, tr.x); }
   console.log('wall at', fmt(wall.x0), 'truck front reached', fmt(maxX + tr.G.hook[0]), 'damage', fmt(tr.damage), 'v', fmt(tr.vF * 3.6));
   `);
+} else if (scen === 'hazards') {
+  // every road has potholes; rough roads have boulders and hard stretches; a boulder taken fast hurts, slowly not
+  run(`
+  let noHoles = [];
+  for (const id of Object.keys(EDGES)) {
+    const hz = edgePiece(id).haz || {};
+    if (!hz.holes) noHoles.push(id);
+    console.log(id, EDGES[id].name, JSON.stringify(hz));
+  }
+  console.log(noHoles.length ? 'FAIL no potholes: ' + noHoles.join(',') : 'ok: every road has potholes');
+  for (const vmax of [3.5, 12]) {
+    const c = new Course(9); c.X0 = 0; c.start(0);
+    c.sec(140, 0, S_GRAVEL, { amp: 0, rough: 0, shape: 'l', bumps: [[90, 0.26, 0.7]] });
+    const s = new Sim(c, { temp: -18, wind: 0, fresh: 0, extraSnow: 0, part: 0 });
+    const cfg = stockCfg('cc'); const t = s.addTruck(TRUCKS.cc, cfg, 10, { player: true, cargo: null });
+    let mb = 0, mbs = 0; for (let i = 0; i < 120 * 60 && t.x < 130; i++) { s.step(1 / 120, { throttle: t.vF < vmax ? 1 : 0, brake: 0 }); for (const w of t.wheels) { mb = Math.max(mb, Math.abs(w.bump)); mbs = Math.max(mbs, w.bumpSp || 0); } }
+    console.log('rock at', vmax, 'm/s: hit at', (t.vF * 1).toFixed(1), 'm/s, damage', t.damage.toFixed(1), 'maxBump', (mb / 1e5).toFixed(2), 'maxSp', mbs.toFixed(2), vmax > 8 ? (t.damage > 0.3 ? 'ok: hurt' : 'FAIL no damage') : (t.damage < 0.3 ? 'ok: unharmed' : 'FAIL hurt at crawl'));
+  }
+  for (const vmax of [3.5, 12]) {
+    const c = new Course(9); c.X0 = 0; c.start(0);
+    c.sec(140, 0, S_GRAVEL, { amp: 0, rough: 0, shape: 'l' });
+    // a game-style pothole at x = 90: gentle roll-in, sharp lip out, broken edge past it
+    for (let q = 0; q < c.n; q++) { let d = (q * DX - 90) / 1.2; if (d > -1 && d < 0.55) { if (d > 0) d = Math.min(1, d * 1.8); c.y[q] -= 0.24 * 0.5 * (1 + Math.cos(Math.PI * d)); } const dl = (q * DX - 90.84) / 0.28; if (Math.abs(dl) < 1) c.y[q] += 0.10 * 0.5 * (1 + Math.cos(Math.PI * dl)); }
+    const s = new Sim(c, { temp: -18, wind: 0, fresh: 0, extraSnow: 0, part: 0 });
+    const cfg = stockCfg('cc'); const t = s.addTruck(TRUCKS.cc, cfg, 10, { player: true, cargo: null });
+    let mb = 0, mbs = 0, mt = 0, msd = 0; for (let i = 0; i < 120 * 60 && t.x < 130; i++) { s.step(1 / 120, { throttle: t.vF < vmax ? 1 : 0, brake: 0 }); for (const w of t.wheels) { mb = Math.max(mb, Math.abs(w.bump)); mbs = Math.max(mbs, w.bumpSp || 0); mt = Math.max(mt, Math.abs(w.trav)); msd = Math.max(msd, w.spd || 0); } }
+    const hurt = t.damage + t.wear.springs * 100 + t.wear.tires * 100;
+    console.log('pothole at', vmax, 'm/s: damage', t.damage.toFixed(1), 'springWear', (t.wear.springs * 100).toFixed(2), 'maxSpd', msd.toFixed(2), vmax > 8 ? (hurt > 0.1 ? 'ok: hurt' : 'FAIL no damage') : (hurt < 0.1 ? 'ok: unharmed' : 'FAIL hurt at crawl'));
+    if (vmax > 8) { let prof = []; for (let q = Math.round(86 / DX); q <= Math.round(94 / DX); q++) prof.push((q * DX).toFixed(1) + ':' + c.y[q].toFixed(2)); console.log('  profile', prof.join(' ')); }
+  }
+  `);
 } else if (scen === 'launch') {
   // standing start on a steep grade: does the clutch bite smoothly, does the auto box hold the gear?
   const [truck, parts, low] = process.argv.slice(3); const lowOn = low === '1'; const tag = (truck + ' ' + (parts || '') + ' low=' + (lowOn ? 1 : 0)).replace(/'/g, '');

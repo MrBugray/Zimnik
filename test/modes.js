@@ -1,4 +1,4 @@
-// Mode select + truck buying flow check (Windows: uses Edge)
+// Title screen (start new / continue / settings) + truck buying flow check (Windows: uses Chrome/Edge)
 const puppeteer = require('puppeteer-core'), path = require('path');
 const EDGE = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 const fs = require('fs');
@@ -12,11 +12,15 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const url = 'http://127.0.0.1:8931/index.html';
   await p.goto(url); await p.evaluate(() => localStorage.clear()); await p.goto(url); await sleep(1200);
   const ev = (f, a) => p.evaluate(f, a);
-  console.log('title state:', await ev(() => __game.state), 'mode:', await ev(() => __game.data.mode));
-  // pick the normal way
-  await p.tap('#oNorm'); await sleep(600);
-  console.log('after oNorm: mode', await ev(() => __game.data.mode), 'state', await ev(() => __game.state), 'unlockAll', await ev(() => __game.settings.unlockAll),
-    'owned', await ev(() => JSON.stringify(__game.data.ownedTrucks)), 'cash', await ev(() => __game.cash));
+  console.log('title state:', await ev(() => __game.state), 'start btn:', await ev(() => { const b = document.getElementById('oCont'); return b && b.textContent; }));
+  // settings on the start screen: the gear knob choices live here now
+  await p.tap('#oSet'); await sleep(400);
+  console.log('settings segs:', await ev(() => [...document.querySelectorAll('.seg')].map(s => s.dataset.k).join(',')));
+  await p.tap('#oBack'); await sleep(400);
+  // start a new game: normal economy, weather cycling on its own
+  await p.tap('#oCont'); await sleep(600);
+  console.log('after start: state', await ev(() => __game.state), 'owned', await ev(() => JSON.stringify(__game.data.ownedTrucks)),
+    'cash', await ev(() => __game.cash), 'weatherMode', await ev(() => __game.settings.weatherMode), 'timeFlow', await ev(() => __game.timeFlow));
   // the Polaris is owned: parts cost money
   console.log('gGo:', await ev(() => document.getElementById('gGo').textContent));
   await ev(() => { __game.garageAct('buy', 'engine', 'i683'); });
@@ -29,11 +33,13 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   // jobs blocked for an unowned truck
   await ev(() => { __game.switchTruck(1); __game.openJobs(); });
   console.log('jobs on unowned sk: state', await ev(() => __game.state), 'gid', await ev(() => __game.gid));
-  // reload: mode persists, title shows Continue
+  // reload: title shows Continue and Start new game
   await p.goto(url); await sleep(1200);
-  console.log('after reload: mode', await ev(() => __game.data.mode), 'continue btn:', await ev(() => { const b = document.getElementById('oCont'); return b && b.textContent; }), 'owned', await ev(() => JSON.stringify(__game.data.ownedTrucks)));
-  // new roads exist and route
-  console.log('edges:', await ev(() => Object.keys(__w.EDGES).length), 'route camp>cut12:', await ev(() => __w.route('camp', 'cut12', null, () => true).edges.join(',')));
+  console.log('after reload: continue btn:', await ev(() => { const b = document.getElementById('oCont'); return b && b.textContent; }),
+    'new btn:', await ev(() => { const b = document.getElementById('oNew'); return b && b.textContent; }), 'owned', await ev(() => JSON.stringify(__game.data.ownedTrucks)));
+  // new roads exist and route; closed roads can be routed around
+  console.log('edges:', await ev(() => Object.keys(__w.EDGES).length), 'route camp>cut12:', await ev(() => __w.route('camp', 'cut12', null, () => true).edges.join(',')),
+    'closed e29:', await ev(() => __w.route('camp', 'cut12', new Set(['e29']), () => true).edges.join(',')));
   console.log(errs.length ? 'ERRORS ' + [...new Set(errs)].join(' | ') : 'no errors');
   await b.close();
 })().catch(e => { console.error('FATAL', e.message); process.exit(1); });

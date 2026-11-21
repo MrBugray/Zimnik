@@ -213,11 +213,10 @@ class Hud {
   }
   segs(k, cur, items) { return '<div class="seg" data-k="' + k + '">' + items.map(([v, n]) => '<button data-v="' + v + '" class="' + (v === cur ? 'on' : '') + '">' + n + '</button>').join('') + '</div>'; }
   conditionsHTML() {
-    const G = this.G, rnd = G.settings.weatherMode === 'random', w = G.data.wx;
-    const now = rnd ? '<p class="wxnow">It changes as time goes by. Now: <b>' + WEATHER[G.weather].name + '</b>' + (w && G.wxF > 0 && w.next !== G.weather ? ', turning ' + WEATHER[w.next].name.toLowerCase() : w && w.next ? ' · next: ' + WEATHER[w.next].name.toLowerCase() : '') + '</p>' : '';
-    return '<h2>Weather</h2>' + this.segs('weather', rnd ? 'random' : G.weather, Object.keys(WEATHER).map(k => [k, WEATHER[k].name]).concat([['random', 'Random']])) + now +
-      '<h2>Time of day</h2>' + this.segs('time', G.timeKey, Object.keys(TIMES).map(k => [k, TIMES[k].name])) +
-      '<div class="row">' + this.segs('flow', G.timeFlow ? 'on' : 'off', [['off', 'Time frozen'], ['on', 'Time flows']]) + '</div>';
+    const G = this.G, w = G.data.wx;
+    const now = '<p class="wxnow">Now: <b>' + WEATHER[G.weather].name + '</b>' + (w && G.wxF > 0 && w.next !== G.weather ? ', turning ' + WEATHER[w.next].name.toLowerCase() : w && w.next ? ' · next: ' + WEATHER[w.next].name.toLowerCase() : '') + '. It changes as time goes by.</p>';
+    return '<h2>Weather</h2>' + now +
+      '<h2>Time of day</h2><p class="wxnow"><b>' + TIMES[G.timeKey].name + '</b> — the day moves on its own while you drive.</p>';
   }
   wireSegs(after) {
     this.ov.querySelectorAll('.seg').forEach(seg => seg.querySelectorAll('button').forEach(b => b.addEventListener('pointerdown', e => {
@@ -236,31 +235,33 @@ class Hud {
   }
   btn(id, fn) { const b = this.ov.querySelector('#' + id); if (b) b.addEventListener('pointerdown', e => { e.preventDefault(); this.G.sound.init(); fn(); }); }
   showTitle() {
-    const G = this.G, mode = G.data.mode;
+    const G = this.G, started = !!G.data.started;
     this.root.hidden = true; this.gar.hidden = true;
-    const head = '<h1>ZIM<span>NIK</span></h1><div class="sub">Haulage in the far north · v0.9</div>' +
-      '<p style="margin-top:calc(var(--u)*2.4)">Twelve places, thirty-one roads and four trucks, one of them pulling trailers. Keep the camps, mills, mine and villages supplied, rescue stranded drivers, find the forgotten roads and dig salvage out of the snow. Your trucks stay wherever they finish, even out on the road, and urgent loads run against the clock.</p>';
-    const big = 'style="height:auto;min-height:calc(var(--u)*18);flex-direction:column;gap:calc(var(--u)*.8);padding:calc(var(--u)*1.6) calc(var(--u)*4)"';
-    const cap = t => '<span style="font-size:calc(var(--u)*3.2);font-weight:600;opacity:.82;line-height:1.15;max-width:calc(var(--u)*46);white-space:normal">' + t + '</span>';
-    if (mode) {
-      this.ov.innerHTML = '<div class="panel" style="width:min(94vw,calc(var(--u)*124))">' + head +
-        '<div class="row"><button class="btn amber" id="oCont" style="height:calc(var(--u)*11);font-size:calc(var(--u)*5.4);padding:0 calc(var(--u)*7)">Continue</button></div>' +
-        '<p style="font-size:calc(var(--u)*3.4);color:#cfc5b2">Mode: <b style="color:#f3ead7">' + (mode === 'sandbox' ? 'Sandbox — everything is free' : 'The normal way — earn and buy') + '</b>&nbsp;·&nbsp;switch: <button class="sbtn gr" id="oModeS">Sandbox</button> <button class="sbtn gr" id="oModeN">Normal</button></p></div>';
-      this.ov.hidden = false;
-      this.btn('oCont', () => G.toHub());
-      this.btn('oModeS', () => { G.setMode('sandbox'); this.showTitle(); });
-      this.btn('oModeN', () => { G.setMode('normal'); this.showTitle(); });
-      return;
-    }
-    this.ov.innerHTML = '<div class="panel" style="width:min(94vw,calc(var(--u)*124))">' + head +
-      '<h2>How do you want to play it?</h2>' +
-      '<div class="row">' +
-      '<button class="btn light" id="oNorm" ' + big + '><span style="font-size:calc(var(--u)*6)">The normal way</span>' + cap('Start with 3,000 ₽ and the old Polaris. Every upgrade, add-on and truck has its price.') + '</button>' +
-      '<button class="btn amber" id="oCont" ' + big + '><span style="font-size:calc(var(--u)*6)">Sandbox</span>' + cap('Every truck, upgrade and add-on is free. Just drive.') + '</button>' +
-      '</div></div>';
+    this.ov.innerHTML = '<div class="panel full"><div class="tfill"><h1>ZIM<span>NIK</span></h1><div class="sub">Haulage in the far north · v0.9</div>' +
+      '<div class="tcol">' +
+      (started ? '<button class="btn amber" id="oCont">Continue</button>' : '') +
+      '<button class="btn ' + (started ? 'light' : 'amber') + '" id="' + (started ? 'oNew' : 'oCont') + '">Start new game</button>' +
+      '<button class="btn light" id="oSet">Settings</button>' +
+      '</div></div></div>';
     this.ov.hidden = false;
-    this.btn('oCont', () => { G.setMode('sandbox'); G.toHub(); });
-    this.btn('oNorm', () => { G.setMode('normal'); G.toHub(); });
+    this.btn('oCont', () => { G.data.started = 1; G.saveNow(); G.toHub(); });
+    if (started) this.confirm('oNew', () => G.newGame());
+    this.btn('oSet', () => this.showSettings());
+  }
+  showSettings() {
+    const G = this.G, s = G.settings, gap = '<div style="height:calc(var(--u)*1.5)"></div>';
+    this.ov.innerHTML = '<div class="panel full"><div class="tfill"><h1 style="font-size:calc(var(--u)*9)">Settings</h1><div class="tcol">' +
+      '<h2>Gear knob</h2>' + this.segs('gear', s.autoGear ? 'auto' : 'man', [['auto', 'Start in AUTO'], ['man', 'Start in neutral, manual']]) +
+      gap + this.segs('knob', s.knobLook === 'gate' ? 'gate' : 'face', [['face', 'Pattern on the knob'], ['gate', 'Lever in a gate']]) +
+      gap + this.segs('sk12', s.sk12 === 'b' ? 'b' : 'a', [['a', 'Skinnerd 12: LO · INT · DIR'], ['b', 'Skinnerd 12: range + splitter']]) +
+      '<h2>Game</h2>' + this.segs('sound', s.sound ? 'on' : 'off', [['on', 'Sound on'], ['off', 'Sound off']]) +
+      gap + this.segs('quality', s.quality, [['auto', 'Graphics auto'], ['high', 'High'], ['low', 'Low']]) +
+      gap + this.segs('fps', s.fps, [['auto', 'Frame rate auto'], ['60', '60 fps'], ['30', '30 fps · battery']]) +
+      gap + this.segs('hold', s.autoHold ? 'on' : 'off', [['on', 'Auto-hold on'], ['off', 'Auto-hold off']]) +
+      '<div class="row" style="justify-content:center"><button class="btn amber" id="oBack">Back</button></div></div></div></div>';
+    this.ov.hidden = false;
+    this.wireSegs();
+    this.btn('oBack', () => this.showTitle());
   }
   // the board at the truck's yard: hauls, breakdowns, and driving empty to somewhere else
   showJobs() {
@@ -314,12 +315,10 @@ class Hud {
     const fuel = Math.round(cfg.fuel), fneed = d => G.fuelNeed(d), fwarn = d => fneed(d) > fuel ? '<small class="lowf">Fuel: about ' + fneed(d) + ' L needed, ' + fuel + ' L in the tank</small>' : '';
     const go = [], other = [];
     if (J) {
-      const C = CARGO[J.cargo], atDest = !R && cfg.loc === J.to, d = atDest ? 0 : G.distFrom(J.to), due = G.dueLeft(J);
-      const dueTxt = due === null ? 'no deadline' : due >= 0 ? 'due in ' + fmtTime(due) : 'late by ' + fmtTime(-due) + ', pays −' + Math.round((1 - latePay(-due)) * 100) + '%';
-      const tier = J.tier && J.tier !== 'standard' ? '<i class="dem">' + JOB_TIERS[J.tier].name + ' · +' + Math.round(J.bonus * 100) + '% on time</i>' : '';
+      const C = CARGO[J.cargo], atDest = !R && cfg.loc === J.to, d = atDest ? 0 : G.distFrom(J.to);
       const aboard = J.left + ' / ' + J.units + ' ' + C.units + ' aboard';
-      if (atDest) go.push({ k: 'unload', em: '~' + money(G.jobValue(J) * J.left / J.units), b: 'Unload here', tier, span: C.name + ' for ' + N.name + ' · ' + aboard + ' · ' + dueTxt, small: 'Drive in from the gate and unload' });
-      else go.push({ k: 'go', em: km(d) + ' km', b: 'Carry on to ' + NODES[J.to].name, tier, span: C.name + ' · ' + aboard + ' · ' + dueTxt + ' · ≈' + fneed(d) + ' L', small: R ? 'From where it stands, ' + G.whereText() : 'From ' + N.name, warn: fwarn(d) });
+      if (atDest) go.push({ k: 'unload', em: '~' + money(G.jobValue(J) * J.left / J.units), b: 'Unload here', span: C.name + ' for ' + N.name + ' · ' + aboard, small: 'Drive in from the gate and unload' });
+      else go.push({ k: 'go', em: km(d) + ' km', b: 'Carry on to ' + NODES[J.to].name, span: C.name + ' · ' + aboard + ' · ≈' + fneed(d) + ' L', small: R ? 'From where it stands, ' + G.whereText() : 'From ' + N.name, warn: fwarn(d) });
       const fee = Math.round(G.jobValue(J) * ABANDON_FEE / 10) * 10;
       other.push({ k: 'abandon', em: '−' + money(fee), b: 'Abandon the job', span: 'A ' + Math.round(ABANDON_FEE * 100) + '% fee. The load goes back to ' + NODES[J.from].name + ' and the truck stays ' + (R ? 'where it is' : 'here') + ', empty' });
     } else if (R) {
@@ -333,13 +332,13 @@ class Hud {
     }
     if (!go.some(o => o.k === G.jobSel)) G.jobSel = go[0].k;
     if (R && R.crashed) for (const o of go) { o.dis = true; o.warn = '<small class="lowf">On its side: it needs a tow, or another of your trucks to fetch it</small>'; }
-    const cardH = o => '<button class="job' + (o.k === G.jobSel ? ' on' : '') + (o.dis ? ' dis' : '') + '" data-k="' + o.k + '"><em>' + o.em + '</em><b>' + o.b + '</b>' + (o.tier || '') + '<span>' + o.span + '</span>' + (o.small ? '<small>' + o.small + '</small>' : '') + (o.warn || '') + '</button>';
+    const cardH = o => '<button class="job' + (o.k === G.jobSel ? ' on' : '') + (o.dis ? ' dis' : '') + '" data-k="' + o.k + '"><em>' + o.em + '</em><b>' + o.b + '</b><span>' + o.span + '</span>' + (o.small ? '<small>' + o.small + '</small>' : '') + (o.warn || '') + '</button>';
     const actH = o => '<button class="job act" id="j_' + o.k + '"><em>' + o.em + '</em><b>' + o.b + '</b><span>' + o.span + '</span></button>';
     const head = R ? 'On the road' : J && cfg.loc === J.to ? 'Delivery waiting' : 'Your load';
     const list = '<div class="jh">' + (J ? 'THE JOB' : 'DRIVE ON') + '</div>' + go.map(cardH).join('') + (other.length ? '<div class="jh">OR</div>' + other.map(actH).join('') : '') +
       (J ? '<p class="jnote">Deliver this load or give the job up to take other work.</p>' : '');
     this.ov.innerHTML = '<div class="panel"><h1 style="font-size:calc(var(--u)*8)">' + head + '</h1><div class="sub">' + TRUCKS[id].name + ' · ' + G.whereText() + (R && R.crashed ? ' · on its side' : '') + '</div><div class="cols"><div><div class="jobs">' + list + '</div></div><div>' +
-      this.conditionsHTML() + '<p style="margin-top:calc(var(--u)*2.2)">The deadline runs on the district clock: it moves while you drive, and tows add their time.</p>' +
+      this.conditionsHTML() + '<p style="margin-top:calc(var(--u)*2.2)">The district clock moves while you drive, and tows and fuel calls add their time.</p>' +
       '<div class="row"><button class="btn amber" id="oStart" style="height:calc(var(--u)*10);font-size:calc(var(--u)*5);padding:0 calc(var(--u)*6)">Start</button><button class="btn light" id="oMap">Map</button><button class="btn light" id="oBack">Back</button></div></div></div></div>';
     this.ov.hidden = false; this.gar.hidden = true;
     this.wireSegs(() => this.showMyJob());
@@ -357,9 +356,7 @@ class Hud {
     const keep = this.ov.querySelector('.panel'), top = keep && !this.ov.hidden ? keep.scrollTop : 0;
     const to = J.to ? NODES[J.to].name : '', loaded = J.kind === 'haul';
     const name = loaded ? CARGO[J.cargo].name + ' → ' + to : J.kind === 'recover' ? 'Fetch the ' + TRUCKS[J.truck].name + ' → ' + to : J.kind === 'rescue' ? 'Rescue → ' + to : J.kind === 'tow' ? 'Tow → ' + to : J.kind === 'travel' ? 'Driving to ' + to : 'Free drive';
-    const due = G.dueLeft(J), tier = J.tier && J.tier !== 'standard' ? JOB_TIERS[J.tier].name + ' · ' : '';
-    const dueTxt = due === null ? '' : due >= 0 ? '<span class="dl' + (due < 60 ? ' warn' : '') + '">⏱ ' + fmtTime(due) + ' left</span>' : '<span class="dl bad">Late by ' + fmtTime(-due) + ' · pays −' + Math.round((1 - latePay(-due)) * 100) + '%</span>';
-    const card = '<div class="pcard"><b>' + name + '</b>' + (tier || dueTxt ? '<span>' + tier + dueTxt + '</span>' : '') + '<span>' + TRUCKS[G.gid].name + ' · ' + G.spotText(sp) + ' · ' + fmtTime(G.runT) + ' driving</span></div>';
+    const card = '<div class="pcard"><b>' + name + '</b><span>' + TRUCKS[G.gid].name + ' · ' + G.spotText(sp) + ' · ' + fmtTime(G.runT) + ' driving</span></div>';
     // what you can do with the truck from here, and with the job
     const acts = [], cl = sp.node ? null : G.closestPlace();
     const giveUp = J.kind === 'rescue' || J.kind === 'tow' ? '. The tow job is given up' : '';
@@ -371,18 +368,15 @@ class Hud {
     const gap = '<div style="height:calc(var(--u)*1.5)"></div>';
     this.ov.innerHTML = '<div class="panel"><div class="phead"><h1 style="font-size:calc(var(--u)*8)">Paused</h1><div class="row"><button class="btn amber" id="oResume">Resume</button><button class="btn light" id="oMap">Map</button><button class="btn light" id="oRestart">Restart drive</button></div></div><div class="cols"><div>' + card + '<div class="jobs pacts">' + acts.map(actH).join('') + '</div></div><div>' +
       this.conditionsHTML() +
-      '<h2>Gear knob</h2>' + this.segs('gear', s.autoGear ? 'auto' : 'man', [['auto', 'Start in AUTO'], ['man', 'Start in neutral, manual']]) +
-      gap + this.segs('knob', s.knobLook === 'gate' ? 'gate' : 'face', [['face', 'Pattern on the knob'], ['gate', 'Lever in a gate']]) +
-      gap + this.segs('sk12', s.sk12 === 'b' ? 'b' : 'a', [['a', 'Skinnerd 12: LO · INT · DIR'], ['b', 'Skinnerd 12: range + splitter']]) +
       '<h2>Settings</h2>' + this.segs('sound', s.sound ? 'on' : 'off', [['on', 'Sound on'], ['off', 'Sound off']]) +
       gap + this.segs('quality', s.quality, [['auto', 'Graphics auto'], ['high', 'High'], ['low', 'Low']]) +
       gap + this.segs('fps', s.fps, [['auto', 'Frame rate auto'], ['60', '60 fps'], ['30', '30 fps · battery']]) +
       gap + this.segs('hold', s.autoHold ? 'on' : 'off', [['on', 'Auto-hold on'], ['off', 'Auto-hold off']]) +
-      gap + this.segs('unlock', s.unlockAll ? 'on' : 'off', [['on', 'Sandbox: all free'], ['off', 'Normal economy']]) +
+      '<p style="margin-top:calc(var(--u)*2);font-size:calc(var(--u)*3.2);color:#cfc5b2">The gear knob and gearbox layouts are set on the start screen.</p>' +
       '</div></div></div>';
     this.ov.hidden = false;
     const pn = this.ov.querySelector('.panel'); if (pn && top) pn.scrollTop = top;
-    this.wireSegs(k => { if (k === 'weather' || k === 'time') this.showPause(); });
+    this.wireSegs();
     this.btn('oResume', () => G.resume()); this.btn('oMap', () => G.openMap('pause')); this.btn('oRestart', () => G.restartJob());
     this.btn('oLeave', () => G.leaveHere()); this.confirm('oTow', () => G.towToClosest()); this.confirm('oFuel', () => G.fuelHelp()); this.confirm('oAbandon', () => G.abandonJob());
   }

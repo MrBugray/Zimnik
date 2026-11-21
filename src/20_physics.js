@@ -184,7 +184,7 @@ class Truck {
     this.shiftT = 0; this.shiftCd = 0; this.shifting = false; this.nextGear = null; this.upBlock = 0; this.derate = 1; this.tq = 1;
     this.Te = 0; this.Tw = 0; this.power = 0; this.vF = 0; this.acc = 0; this.speed = 0; this.dist = st.dist || 0;
     this.sinkAvg = 0; this.bellyDrag = 0; this.crashT = 0; this.crashed = false; this.cabHit = false; this.stuckT = 0; this.windup = 0; this.tireHeat = 0; this.ctisDir = 0;
-    this.overRevT = 0; this.warned = {}; this.holding = false; this.holdT = 0; this.intake = st.intake || 0; this.hitT = 0; this.chainT = 0;
+    this.overRevT = 0; this.warned = {}; this.holding = false; this.holdT = 0; this.intake = st.intake || 0; this.hitT = 0; this.chainT = 0; this.bottomT = 0; this.joltT = 0;
     this.wear = st.wear || { engine: 0, gearbox: 0, tires: 0, springs: 0 };
     this.towing = null; this.towedBy = null; this.semi = null;
     this.build(x, opts.cargo, st.cargoLeft, opts.kingpin);
@@ -600,7 +600,7 @@ class Truck {
       let F = 0;
       if (t > this.up) F = -((t - this.up) * 420000 + Math.max(0, sp) * 26000);
       else if (t < -this.down) F = (-this.down - t) * 420000 + Math.max(0, -sp) * 26000;
-      w.bump = F;
+      w.bump = F; w.bumpSp = F ? Math.abs(sp) : 0; w.spd = sp;
       if (F) { w.body.applyForceToCenter(V2(axW.x * F, axW.y * F), true); ch.applyForce(V2(-axW.x * F, -axW.y * F), pw, true); }
       w.touch = false;
     }
@@ -636,6 +636,27 @@ class Truck {
         if (!w.flat && this.cond.tires < 0.25 && w.surf === S_ROCK && Math.abs(w.vt) > 3 && Math.random() < dt * (0.25 - this.cond.tires) * 0.4) { w.flat = true; if (this.isPlayer) sim.emit('flat', 'Puncture! The tires are worn out', 'bad'); }
       } else { w.sink *= 0.92; w.rollT = 0; w.bc = 0; }
       if (Math.abs(w.bump) > 1e5) this.wear.springs += Math.abs(w.bump) / 1e5 * dt * 0.0005;
+      // a bumpstop slammed home (a rock or a pothole taken too fast): that hurts the truck.
+      // What damages is how fast the suspension is driven into its stops, not the force alone.
+      const bh = Math.abs(w.bump), spd = w.bumpSp || 0;
+      if (this.bottomT <= 0 && !this.isTrailer && (spd > 2.0 || bh > 1.7e5)) {
+        const d = Math.min(6, Math.max(spd > 2.0 ? (spd - 2.0) * 1.9 : 0, bh > 1.7e5 ? (bh / 1e5 - 1.7) * 2.0 : 0));
+        if (d > 0.4) {
+          this.bottomT = 0.5; this.damage = Math.min(100, this.damage + d); this.hitT = 0.35;
+          if (this.isPlayer) { sim.emit('hit', 'Bottomed out on the ' + (w.surf === S_ROCK ? 'rocks' : 'bumps') + '! Damage ' + Math.round(this.damage) + '%', 'warn'); sim.emit('sfx', 'thud'); }
+          // a rock strike at speed can cut a tire, a pumped-up one more easily
+          if (!w.flat && w.surf === S_ROCK && Math.abs(this.vF) > 5 && Math.random() < (this.pressure > 2.2 ? 0.2 : 0.1)) { w.flat = true; if (this.isPlayer) sim.emit('flat', 'Puncture! The tire hit a rock', 'bad'); }
+        }
+      }
+      // a pothole or a washboard dip taken fast: the wheel slams up through its travel without reaching
+      // the stops; tires and springs pay even when the body is spared (the sharp lip above is what really breaks things)
+      const jolt = w.spd || 0;
+      if (w.touch && !w.bump && jolt > 4.0 && this.joltT <= 0 && !this.isTrailer) {
+        this.joltT = 0.5;
+        this.wear.springs += (jolt - 4.0) * 0.0025; this.wear.tires += (jolt - 4.0) * 0.0015;
+        if (this.isPlayer) { sim.emit('hit', 'A pothole at speed! Tires and springs suffer', 'warn'); sim.emit('sfx', 'thud'); }
+        if (!w.flat && this.cond.tires < 0.5 && Math.random() < 0.08) { w.flat = true; if (this.isPlayer) sim.emit('flat', 'Puncture in a pothole! The tires are tired', 'bad'); }
+      }
     }
     this.sinkAvg = nt ? sinkSum / nt : 0; this.onGround = nt;
     // chains, straps and cargo
@@ -703,6 +724,8 @@ class Truck {
     if (this.thrIn > 0.6 && Math.abs(this.vF) < 0.3) { this.stuckT += dt; if (this.stuckT > 7) { this.stuckT = -20; sim.emit('stuck', 'Stuck? Try AWD, diff lock, a lower gear or lower tire pressure', 'warn'); } }
     else if (this.stuckT > 0) this.stuckT = 0; else this.stuckT = Math.min(0, this.stuckT + dt);
     if (this.hitT > 0) this.hitT -= dt;
+    if (this.bottomT > 0) this.bottomT -= dt;
+    if (this.joltT > 0) this.joltT -= dt;
     this.dist += Math.abs(this.vF) * dt;
   }
 }

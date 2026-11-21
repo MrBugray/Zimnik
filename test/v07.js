@@ -1,6 +1,6 @@
 // 0.7 checks in a browser: the gear knob (both looks, both Skinnerd layouts, split reverse gears, the double push to
 // force a downshift), the pause menu (leave, tow, fuel truck, abandon), trucks left on the roads and fetched with
-// another truck, deliveries on the district clock (bonus on time, cut when late), random weather, the drive map.
+// another truck, deliveries on the district clock (no deadlines: the clock moves time, weather and pay), random weather, the drive map.
 // node test/v07.js   (pictures go to $SHOTS or the scratchpad)
 const puppeteer = require('puppeteer-core'), path = require('path'), fs = require('fs');
 const OUT = process.env.SHOTS || '/tmp/claude-0/-home-claude/936babd9-14ae-5cd0-b1bf-6401ea6ac088/scratchpad/shots07';
@@ -71,13 +71,13 @@ const check = (name, ok, extra) => { if (!ok) fails++; console.log((ok ? 'ok   '
     const r = __w.route('camp', 'mill', null, s => G.secret(s));
     G.startJob({ id: 'test', kind: 'haul', cargo: 'pulp', from: 'camp', to: 'mill', dist: r.d, dem: 0.9 });
     for (let i = 0; i < 12 && G.trip.pending; i++) { const p = G.trip.pending; G.chooseRoad((p.opts.find(q => q.edge === 'e3') || p.opts[0]).edge); }
-    const J = G.cfg().job; return { tier: J.tier, due: J.due - G.clock, bonus: J.bonus, left: J.left, units: J.units, saved: !!G.data.trucks.cc.job };
+    const J = G.cfg().job; return { left: J.left, units: J.units, saved: !!G.data.trucks.cc.job, due: J.due, tier: J.tier, bonus: J.bonus };
   });
-  console.log('urgent job:', JSON.stringify(job));
-  check('urgent job is due on the clock', job.tier === 'urgent' && job.due > 60 && job.saved && job.bonus === 0.25);
+  console.log('job:', JSON.stringify(job));
+  check('job saved on the truck, no deadline fields', job.saved && job.units > 0 && job.left === job.units && job.due === undefined && job.tier === undefined && job.bonus === undefined);
   await ev(() => { __z.teleport(__z.roadX('e3', 420)); }); await settle(); await sleep(400);
-  await shot('drive_deadline');
-  check('progress shows the countdown', await ev(() => /left/.test(document.getElementById('progLbl').textContent)), await ev(() => document.getElementById('progLbl').textContent));
+  await shot('drive_job');
+  check('progress shows the run timer, no countdown', await ev(() => { const t = document.getElementById('progLbl').textContent; return /km/.test(t) && /\d+:\d\d/.test(t) && !/left/.test(t); }), await ev(() => document.getElementById('progLbl').textContent));
   await tap('#bMenu'); await sleep(300);
   const menu = await ev(() => [...document.querySelectorAll('.pacts .job b')].map(b => b.textContent));
   console.log('pause menu:', menu.join(' / '));
@@ -137,7 +137,7 @@ const check = (name, ok, extra) => { if (!ok) fails++; console.log((ok ? 'ok   '
   check('Polaris now in the mill yard, load aboard', recd.title === 'Truck recovered!' && !recd.cc.road && recd.cc.loc === 'mill' && recd.cc.left > 0);
   await shot('results_recovered');
 
-  // ---------- 4) unload where it was towed: inside the yard, on time ----------
+  // ---------- 4) unload where it was towed: inside the yard ----------
   await ev(() => { const G = __game; G.gid = 'cc'; G.toHub(); }); await sleep(500);
   check('garage says unload here', await ev(() => /Unload here/.test(document.getElementById('gGo').textContent)));
   await tap('#gGo'); await sleep(300); await shot('jobs_unload');
@@ -149,26 +149,9 @@ const check = (name, ok, extra) => { if (!ok) fails++; console.log((ok ? 'ok   '
   await ev(() => __game.doAction()); await sleep(400);
   const paid = await ev(() => [...document.querySelectorAll('.stats')][1].textContent.replace(/\s+/g, ' '));
   console.log('delivery pay:', paid.slice(0, 200));
-  check('on time pays the urgent bonus', /Urgent, on time/.test(paid), paid.slice(0, 60));
+  check('delivery pays base + rate, no bonus or late rows', /Delivery/.test(paid) && !/bonus|late|Late|Urgent/i.test(paid), paid.slice(0, 80));
   check('job done', await ev(() => !__game.cfg('cc').job && __game.cfg('cc').loc === 'mill'));
   await shot('results_delivered');
-
-  // ---------- 5) late delivery ----------
-  const late = await ev(() => {
-    const G = __game; G.toHub(); G.gid = 'cc'; G.cfg().loc = 'camp'; G.cfg().fuel = G.tankCap();
-    const r = __w.route('camp', 'mill', null, s => G.secret(s));
-    G.startJob({ id: 'late', kind: 'haul', cargo: 'pulp', from: 'camp', to: 'mill', dist: r.d, dem: 0.9 });
-    for (let i = 0; i < 12 && G.trip.pending; i++) G.chooseRoad(G.trip.pending.opts[0].edge);
-    G.clock = G.job.due + 150;
-    const z = G.course.zones.find(q => q.role === 'end'); __z.teleport(z.x0 + 22); return true;
-  });
-  await settle(); await sleep(300);
-  await shot('drive_late');
-  await ev(() => __game.doAction()); await sleep(400);
-  const lp = await ev(() => [...document.querySelectorAll('.stats')][1].textContent.replace(/\s+/g, ' '));
-  console.log('late pay:', lp.slice(0, 200));
-  check('late cut shown', /Late by 2:3\d · −4[45]%/.test(lp), lp.slice(0, 80));
-  await shot('results_late');
 
   // ---------- 6) tows ----------
   // near the start: towed back to the closest yard, the job carries on from there
@@ -217,7 +200,7 @@ const check = (name, ok, extra) => { if (!ok) fails++; console.log((ok ? 'ok   '
 
   // ---------- 8) random weather ----------
   const wx = await ev(() => {
-    const G = __game; G.setOption('weather', 'random');
+    const G = __game; G.settings.weatherMode = 'random'; G.data.wx = null; G.wxInit();
     const w = G.data.wx, cur = w.cur, nxt = w.next; G.clock = w.at + 45; G.wxStep(0);
     return { cur, nxt, f: G.wxF, vis: Math.round(G.W.vis), visA: __w.WEATHER[cur].vis, visB: __w.WEATHER[nxt].vis, weather: G.weather };
   });
@@ -227,8 +210,8 @@ const check = (name, ok, extra) => { if (!ok) fails++; console.log((ok ? 'ok   '
   const wx2 = await ev(() => { const G = __game, w = G.data.wx, at0 = w.at; G.clock = w.at + 2000; G.wxStep(0); return { cur: w.cur, weather: G.weather, f: G.wxF, moved: w.at > at0 + 90 }; });
   check('and moves on with the clock', wx2.moved, JSON.stringify(wx2));
   await ev(() => { __game.pause(); }); await sleep(300);
-  check('random shown in the menu', await ev(() => !!document.querySelector('.seg[data-k="weather"] button.on[data-v="random"]') && !!document.querySelector('.wxnow')));
-  await ev(() => { __game.resume(); __game.setOption('weather', 'clear'); });
+  check('weather readout in the menu', await ev(() => !!document.querySelector('.wxnow') && !document.querySelector('.seg[data-k="weather"]')));
+  await ev(() => { const G = __game; G.resume(); G.settings.weatherMode = 'fixed'; G.weather = 'clear'; G.W = __w.WEATHER.clear; G.data.wx = null; G.applyConditions(); });
 
   // ---------- 9) the map in the hub shows trucks out on the roads ----------
   await ev(() => { const G = __game; G.data.trucks.sk.road = { edge: 'e7', s: 900, dir: 1, at: 0 }; G.toHub(); G.openMap('garage'); }); await sleep(1200);

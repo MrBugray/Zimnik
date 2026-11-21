@@ -48,6 +48,7 @@ class Renderer {
     this.worldTf(ctx);
     const lights = [];
     if (G.stranded && G.stranded.ditch) this.drawDitch(ctx, P, L, t, lights, G.stranded);
+    if (G.stuck) this.drawDitch(ctx, P, L, t, lights, G.stuck);
     if (G.roadside) for (const q of G.roadside) if (q.truck) this.drawDitch(ctx, P, L, t, lights, q);
     this.wr.drawTerrain(ctx, this, P, course, L, sim.env);
     if (G.iceCrack > 0.05) this.drawCracks(ctx, G, P, tr);

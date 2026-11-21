@@ -1,19 +1,9 @@
-// ===== out on the road: the district clock, deadlines, trucks left on the roads, tows, the changing weather =====
+// ===== out on the road: the district clock, trucks left on the roads, tows, the changing weather =====
 // The clock (seconds, in the save) runs whenever one of your trucks is driving, and services add their time: the
-// tow truck coming out, a fuel truck. Urgent and priority hauls are due on it; late deliveries pay less.
-const JOB_TIERS = {
-  urgent: { name: 'Urgent', k: 1.3, bonus: 0.25 },
-  priority: { name: 'Priority', k: 1.8, bonus: 0.10 },
-  standard: { name: 'Standard', k: 0, bonus: 0 },
-};
-const ROAD_PACE = { main: 9, river: 7.5, track: 6, zimnik: 6.5, pass: 5, ice: 8 };   // m/s a careful driver keeps up
-const WX_PACE = { clear: 1, overcast: 1.05, snow: 1.15, blizzard: 1.4, fog: 1.2, thaw: 1.2 };
+// tow truck coming out, a fuel truck. The weather turns on it; there are no deadlines.
 const TOW_SERVICE = { base: 900, perKm: 700, semi: 1.8, time: 360, timePerKm: 120 };   // the district tow truck: ₽, seconds
 const FUEL_CALL = { litres: 40, time: 240 };
 const ABANDON_FEE = 0.10;
-const tierOf = dem => dem > 0.75 ? 'urgent' : dem > 0.5 ? 'priority' : 'standard';
-// share of the pay a delivery late by `late` seconds still earns: a fifth off at once, then a tenth a minute, down to 30%
-const latePay = late => late <= 0 ? 1 : Math.max(0.3, 0.8 - 0.1 * late / 60);
 // the weather on its own: how long a spell lasts (seconds on the clock) and what tends to follow it
 const WX_SPELL = { clear: [360, 720], overcast: [300, 600], snow: [240, 480], blizzard: [120, 240], fog: [180, 360], thaw: [240, 480] };
 const WX_NEXT = {
@@ -38,20 +28,6 @@ function blendWeather(a, b, f) {
 Object.defineProperty(Game.prototype, 'clock', { get() { return this.data.clock || 0; }, set(v) { this.data.clock = v; } });
 Object.assign(Game.prototype, {
   addTime(s) { this.clock += s; if (this.state === 'drive' || this.state === 'pause') this.runT += s; this.wxStep(0); },
-  // ---------- deadlines ----------
-  // seconds the drive should take a careful driver: road by road, plus the yards and pads between, in this weather
-  usualTime(from, to, id) {
-    const r = route(from, to, null, s => this.secret(s)); if (!(r.d < Infinity)) return Infinity;
-    let t = 45;
-    for (const e of r.edges) t += EDGES[e].len / (ROAD_PACE[EDGES[e].kind] || 7);
-    for (let i = 1; i < r.path.length - 1; i++) t += nodeLen(r.path[i]) / 6;
-    return t * (WX_PACE[this.weather] || 1) * ((id || this.gid) === 'skt' ? 1.15 : 1);
-  },
-  jobTerms(j, id) {
-    const tier = j.kind === 'haul' ? tierOf(j.dem) : 'standard', T = JOB_TIERS[tier];
-    return { tier, bonus: T.bonus, allow: T.k ? Math.round(T.k * this.usualTime(j.from, j.to, id) / 15) * 15 : null };
-  },
-  dueLeft(J) { return J && J.due ? J.due - this.clock : null; },
   // ---------- where your trucks are ----------
   roadOf(id) { const c = this.data.trucks[id || this.gid]; return c && c.road ? c.road : null; },
   spotText(sp) {
@@ -234,7 +210,8 @@ Object.assign(Game.prototype, {
     let f = (this.clock - w.at) / WX_BLEND;
     while (f >= 1) { w.cur = w.next; w.next = this.wxPick(w.cur); w.at = w.at + WX_BLEND + this.wxSpell(w.cur); f = (this.clock - w.at) / WX_BLEND; quiet = true; }
     f = clamp(f, 0, 1);
-    const q = Math.round(f * 12) / 12, key = f < 0.5 ? w.cur : w.next;
+    // a blend redraws the cached art at each step: a handful of steps is smooth enough and much cheaper
+    const q = Math.round(f * 5) / 5, key = f < 0.5 ? w.cur : w.next;
     if (q !== this.wxF || key !== this.weather || !this.W) {
       const turning = this.wxF === 0 && q > 0 && !quiet && this.state === 'drive';
       this.wxF = q; this.weather = key; this.W = blendWeather(WEATHER[w.cur], WEATHER[w.next], q);
@@ -243,4 +220,4 @@ Object.assign(Game.prototype, {
     }
   },
 });
-Object.assign(window.__w, { ABANDON_FEE, JOB_TIERS, latePay, TOW_SERVICE });   // test hook
+Object.assign(window.__w, { ABANDON_FEE, TOW_SERVICE });   // test hook

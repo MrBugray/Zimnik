@@ -73,9 +73,9 @@ const PROFILE = '/tmp/claude-0/-home-claude/936babd9-14ae-5cd0-b1bf-6401ea6ac088
   await ev(() => { __game.gid = 'cc'; __game.cfg().loc = 'camp'; __game.cash = 30000; __game.toHub(); });
   await ev(() => { __game.garageAct('buy', 'engine', 'i683'); __game.garageAct('buy', 'gearbox', 'g6cc'); __game.garageAct('buyaddon', null, 'bullbar'); __game.garageAct('fit', 'ctis', 'ctis'); });
   console.log('fitted:', await ev(() => [__game.cfg().parts.engine, __game.cfg().parts.gearbox, __game.cfg().parts.ctis].join('/')), 'garage truck', await ev(() => __game.gsim.truck.eng.name));
-  await ev(() => { __game.settings.unlockAll = false; __game.cfg().loc = 'sosn'; __game.toHub(); __game.garageAct('fit', 'engine', 'v862'); });
+  await ev(() => { __game.cfg().loc = 'sosn'; __game.toHub(); __game.garageAct('fit', 'engine', 'v862'); });
   console.log('in Sosnovka without a workshop, engine still:', await ev(() => __game.cfg().parts.engine), 'scene', await ev(() => __game.scene()));
-  await ev(() => { __game.settings.unlockAll = true; __game.cfg().loc = 'camp'; __game.saveNow(); });
+  await ev(() => { __game.cfg().loc = 'camp'; __game.saveNow(); });
   // 9) persistence
   await p.reload(); await sleep(1200);
   console.log('after reload: cash', await ev(() => __game.cash), 'engine', await ev(() => __game.cfg('cc').parts.engine), 'secrets', await ev(() => JSON.stringify(__game.data.secrets)), 'found', await ev(() => JSON.stringify(__game.data.found)), 'locs', await ev(() => Object.keys(__game.data.trucks).map(k => k + '@' + __game.data.trucks[k].loc).join(' ')), 'day', await ev(() => __game.data.world.day));

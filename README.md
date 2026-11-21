@@ -2,16 +2,28 @@
 
 Offline 2D trucking game for Android (HTML5 canvas + planck.js physics, wrapped in a tiny WebView app).
 
-## Game modes
-The welcome screen asks how you want to play. **Sandbox** unlocks every truck, upgrade, add-on and paint for free
-(you still pay for fuel, repairs and tows). **Normal** is the economy game: you start with the Polaris and 3,000 ₽,
-and every truck (Bars 24,000 ₽, Skinnerd 38,000 ₽, Skinnerd tractor 52,000 ₽), upgrade and add-on has its price.
-The choice is kept in the save and can be changed later from the title screen or the pause menu.
+## Starting out
+The start screen is a full-screen menu: **Continue**, **Start new game** (double-tap: it wipes the save) and
+**Settings**. The gear knob choices live in Settings: start in AUTO or in neutral and manual, the knob's look
+(pattern on its face or a lever in an open gate) and the Skinnerd 12-speed's layout (LO/INT/DIR or range +
+splitter), next to sound, graphics, frame rate and auto-hold.
+
+You start with the old Polaris and 3,000 ₽. Every other truck has its price (Bars 24,000 ₽, Skinnerd 38,000 ₽,
+Skinnerd tractor 52,000 ₽) and every upgrade and add-on costs money; fuel, repairs and tows too. Trucks you buy
+stay yours across saves.
 
 ## The world
 Twelve places (yards) and five junctions joined by 31 roads, three of them hidden until you find them. A drive is
 built as you go: the start yard, a road, the next junction pad, the road you pick there, and so on until the yard you
-are heading for, which ends in a wall, a fence or the riverbank. Every road can be driven both ways. Trucks stay
+are heading for, which ends in a wall, a fence or the riverbank. Every road can be driven both ways, and no road is
+flat for long: they all roll with hills, crests and dips (gentler on the paved stretches, wilder on the back tracks),
+so momentum and gear choice matter everywhere, not just on the passes. And every road is broken up: **potholes**
+everywhere (wider and deeper on the back tracks), **boulders** lying on the rougher roads, drifted stretches of
+bottomless-feeling snow, washboard climbs of frozen ruts and, on the worst tracks, whole **rock gardens**. Speed is
+the choice: hit a boulder at 45 km/h and the suspension slams its stops — body damage, maybe a cut tire; crawl it at
+walking pace and nothing happens. A pothole taken fast won't always reach the stops, but the tires and springs pay
+every time. Deep drifts want aired-down tires and AWD, washboard climbs want the diff locked, rock gardens want a
+crawl. Trucks stay
 where they finish; each place has its own job board, driven by what the places make and need.
 
 Two steel bridges cross the Zimnyaya for rigs the ice will not carry in the thaw: the Bridge road from the bridge
@@ -40,6 +52,13 @@ bounces back with the rpm it would hit); push it in again within 2.5 s and it go
 Start a drive in AUTO, or in neutral and manual (setting). Keys: E/W up, Q/S down, R reverse, N neutral, D AUTO.
 
 ## Out on the road
+At a junction the road card comes up well before the pad. If you have not picked by the end of it, the truck brakes
+to a stop and the drive waits — clock and all — until you choose a road.
+
+About one drive in ten has something waiting out there: a driver **stuck in a drift** on the road ahead (stop and
+pull them out for a thank-you in cash and a few minutes on the clock, or drive on by), or a road **snowed in and
+closed** — the job stands, but the short way is not on offer and you go round.
+
 Menu during a drive: **Leave it here** (the truck waits at the roadside with its load; in a yard it parks),
 **Tow to the closest yard** (the district tow truck: a call-out plus a rate per km, and minutes on the clock; to the
 job's destination it drops you at the gate and you drive in and unload yourself), **Call a fuel truck** when the tank
@@ -52,17 +71,16 @@ truck left on a road shows up there on the map, at the roadside when you drive p
 other trucks: **Fetch your truck**, hook up the tow bar, and bring it (load and trailer too) to its delivery or a
 workshop. A truck left on its side needs a tow or another truck before it drives again.
 
-## Deadlines
+## The clock
 The district clock runs while any of your trucks is driving, and the tow truck and the fuel truck add their time.
-Urgent loads (high demand) must be in within 1.3× the time a careful driver takes on the shortest road in this
-weather, priority loads within 1.8×; standard loads have no deadline. On time pays +25% (urgent) or +10% (priority).
-Late, the pay drops by a fifth at once and a further tenth for every minute, down to 30%. The countdown is in the
-progress bar, the pause menu and the job panel.
+There are no deadlines: a job waits as long as it has to. What the clock moves is the world — the time of day, the
+weather, what services are open and what a load pays (night and bad weather pay more).
 
 ## Weather
-Fixed, as picked, or **Random**: it changes as time goes by, one spell to the next (clear tends to cloud over, snow
-can turn to a blizzard, a thaw is followed by cloud), each change blending in over a minute and a half. A coming thaw
-is announced: the ice goes soft.
+The weather runs on its own, one spell to the next (clear tends to cloud over, snow can turn to a blizzard, a thaw
+is followed by cloud), each change blending in over a minute and a half. A coming thaw is announced: the ice goes
+soft. The time of day moves the same way — morning, noon, dusk and night follow the clock while you drive, and the
+lights and the pay follow them.
 
 ## Snow and grip
 Snow has a bottom: a tyre sinks until it reaches packed ground (about 0.1 m plus up to 0.4 m with softness) and from
@@ -150,7 +168,7 @@ earlier sheets (`build_pk.py`, `prep_polaris.py`, `build_polaris.py`) are kept f
   - `48_map.js` district map: the network to scale, river, lakes, hills, forest, routes, jobs, travel
   - `50_audio.js` synthesized engines (a voice per engine) and effects, `60_hud.js` dashboard, junction cards,
     job board, pause menu, garage UI, `62_knob.js` the shift knob, `70_game.js` rules, trips, saves and loop,
-    `71_road.js` the district clock, deadlines, trucks left on the roads, tows, the random weather
+    `71_road.js` the district clock, trucks left on the roads, tows, the random weather
 - `build.js` → `dist/index.html` (one self-contained offline page) and `dist/artifact.html`
 - `tools/apk/` — APK builder without the Android SDK: `dexgen.py` (hand-assembled WebView activity),
   `build_apk.py` (binary manifest, icon resources, aligned zip, APK Signature Scheme v2).
@@ -170,11 +188,14 @@ Saves live in the WebView's localStorage under `zimnik.v2` (older saves are migr
     node test/sim_node.js trip <from> <to> <truck> <cargo> "{parts}" "e15,e17"    # any trip, preferring those roads
     node test/sim_node.js launch cc "{gearbox:'g10cc'}"                           # hill start on the 26% pass
     node test/sim_node.js wall sk 40                                              # drive into a yard wall
+    node test/sim_node.js hazards                                                 # potholes on all roads; rocks/holes: slow is safe, fast hurts
     node test/shots.js [names]                                                    # screenshots of yards, loads, rigs, map
     node test/drive.js && node test/flow.js && node test/rotated.js               # touch path and the whole game flow
     node test/fuel.js [16x9]                                                      # refuelling, fuel truck, credit, running dry
     node test/art.js                                                              # the drawn truck: garage, paint, driving, lighting
     node test/v06.js                                                              # old save, lamps, both exhausts, tyre shading, bridges, map
-    node test/v07.js                                                              # knob, reverse gears, over-rev, leave/tow/fetch, deadlines, weather
+    node test/v07.js                                                              # knob, reverse gears, over-rev, leave/tow/fetch, deliveries, weather
     node test/v09.js                                                              # the Polaris, both bodies: liveries, rims, cage, rack, sliders, bull bar, off-road wheels, loads, beacon
-    node test/modes.js                                                            # welcome screen, sandbox/normal, buying trucks, the new roads
+    node test/modes.js                                                            # start screen, settings, buying trucks, routing around a closed road
+    node test/events.js                                                           # the fork hold, the closed-road event, the stuck driver
+    node test/uiaudit.js                                                          # screenshots of the main screens; every settings button reachable

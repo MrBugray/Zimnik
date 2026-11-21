@@ -432,7 +432,7 @@ function route(from, to, avoid, found) {
     if (u !== from && NODES[u].kind === 'yard' && ADJ[u].length < 2) continue; // dead-end yards can't be passed through
     for (const a of ADJ[u]) {
       const E = EDGES[a.edge]; if (E.secret && found && !found(E.secret)) continue;
-      if (avoid && avoid.has(a.other) && a.other !== to) continue;
+      if (avoid && (avoid.has(a.edge) || (avoid.has(a.other) && a.other !== to))) continue;   // closed roads and no-go places
       const nd = dist[u] + E.len + (a.other === to ? 0 : nodeLen(a.other));
       if (dist[a.other] === undefined || nd < dist[a.other]) { dist[a.other] = nd; prev[a.other] = [u, a.edge]; Q.push(a.other); }
     }
@@ -485,8 +485,109 @@ function edgePiece(id) {
   let P = PIECES.get('e:' + id); if (P) return P;
   const E = EDGES[id];
   P = buildPiece(E.forest, hashStr(id) % 99991 + 11, (c, H) => E.build(c, H));
+  // rolling hills, Hill Climb style: a broad deterministic swell with a livelier chop over the hand-made
+  // profile. Kept off ice, water and wooden decks (bridged over smoothly) and faded out at both ends.
+  {
+    const hs = hashStr('hill:' + id), n = P.n, X = i => i * DX, len = (n - 1) * DX;
+    const k = E.kind === 'pass' ? 0.55 : E.kind === 'ice' ? 0.7 : 1;
+    const sw = new Float32Array(n);
+    for (let i = 0; i < n; i++) sw[i] = (fbm1(X(i) / 130, hs, 3) * 1.9 + fbm1(X(i) / 36, hs + 7, 2) * 0.55) * k;
+    const fade = Math.min(40, len * 0.1);
+    for (let i = 0; i < n; i++) sw[i] *= sstep(0, fade, X(i)) * sstep(len, len - fade, X(i));
+    const flat = i => P.under[i] !== 0 || P.s[i] === S_WOOD;
+    let i = 0;
+    while (i < n) {
+      if (!flat(i)) { i++; continue; }
+      let j = i; while (j < n && flat(j)) j++;
+      const a = i > 0 ? sw[i - 1] : 0, b = j < n ? sw[j] : 0;
+      for (let q = i; q < j; q++) sw[q] = a + (b - a) * (q - i + 1) / (j - i + 1);
+      i = j;
+    }
+    for (let q = 0; q < n; q++) {
+      const d = sw[q]; if (!d) continue;
+      P.y[q] += d;
+      if (!isNaN(P.vis[q]) && P.under[q] !== 2) P.vis[q] += d;   // an ice surface rides with its road; open water stays put
+    }
+  }
   const dy = NODES[E.b].alt - NODES[E.a].alt - P.y[P.n - 1];
   if (Math.abs(dy) > 1e-6) for (let i = 0; i < P.n; i++) { const f = smooth(i / (P.n - 1)); P.y[i] += dy * f; if (!isNaN(P.vis[i])) P.vis[i] += dy * f; }
+  // road hazards, deterministic per road: potholes on every road, boulders on the rough ones, and hard
+  // stretches (drifts, washboard climbs, rock gardens) that ask for AWD, the diff lock and low tire pressure
+  const hz = { holes: 0, rocks: 0, gardens: 0, drifts: 0, ruts: 0 };
+  {
+    const n = P.n, len = (n - 1) * DX, X = i => i * DX, rnd = mulberry32(hashStr('haz:' + id));
+    const hard = E.kind === 'pass' || E.kind === 'zimnik' ? 1.5 : E.kind === 'track' ? 1.3 : E.kind === 'river' || E.kind === 'ice' ? 0.5 : 1;
+    const slopeAtI = i => { const a = Math.max(0, i - 3), b = Math.min(n - 1, i + 3); return (P.y[b] - P.y[a]) / ((b - a) * DX); };
+    const drive = i => P.under[i] === 0 && P.s[i] !== S_WOOD;   // the driving line, never a bridge or water
+    const bump = (x, hw, h, rock) => {
+      const i0 = Math.max(1, Math.floor((x - hw) / DX)), i1 = Math.min(n - 2, Math.ceil((x + hw) / DX));
+      for (let q = i0; q <= i1; q++) { const d = (X(q) - x) / hw; if (Math.abs(d) >= 1) continue; P.y[q] += h * 0.5 * (1 + Math.cos(Math.PI * d)); if (rock) { P.s[q] = S_ROCK; P.soft[q] = 0; } }
+    };
+    // potholes: everywhere (rare on ice and slabs); a dip that slams the suspension when taken fast
+    for (let x = 45 + rnd() * 60; x < len - 45; x += 85 + rnd() * 170 / hard) {
+      const i = Math.round(x / DX), sf = P.s[i];
+      if (!drive(i) || sf === S_DEEP || (sf === S_ICE && rnd() < 0.7) || (sf === S_SLABS && rnd() < 0.6)) continue;
+      let ok = true; for (let q = i - 3; q <= i + 3; q++) if (!drive(q)) { ok = false; break; }
+      if (!ok) continue;
+      const hw = 0.9 + rnd() * 0.6, dep = (0.12 + rnd() * 0.10) * Math.min(1.5, 0.7 + 0.3 * hard) * (Math.abs(slopeAtI(i)) > 0.15 ? 0.7 : 1);
+      // asymmetric: an easy roll-in, a hard broken lip on the way out (it strikes in both directions)
+      const i0 = Math.max(1, Math.floor((x - hw) / DX)), i1 = Math.min(n - 2, Math.ceil((x + hw * 0.55) / DX));
+      for (let q = i0; q <= i1; q++) {
+        let d = (X(q) - x) / hw; if (d <= -1 || d >= 0.55) continue;
+        if (d > 0) d = Math.min(1, d * 1.8);
+        P.y[q] -= dep * 0.5 * (1 + Math.cos(Math.PI * d));
+      }
+      bump(x + hw * 0.7, 0.28, dep * 0.4, false);   // the broken lip on the way out
+      P.decor.push({ t: 'hole', x, w: hw * 2, seed: (rnd() * 1e6) | 0 });
+      hz.holes++;
+    }
+    // boulders on the rough roads: climb them slowly, or feel it in the suspension
+    if (hard >= 0.9) for (let x = 70 + rnd() * 90; x < len - 60; x += 190 + rnd() * 300 / hard) {
+      const i = Math.round(x / DX), sf = P.s[i];
+      if (!drive(i) || sf === S_ICE || sf === S_SLABS || sf === S_DEEP || Math.abs(slopeAtI(i)) > 0.22) continue;
+      const hw = 0.45 + rnd() * 0.4, h = 0.12 + rnd() * 0.15 * Math.min(1.5, hard);
+      bump(x, hw, h, true);
+      P.decor.push({ t: 'rock', x, r: Math.min(0.9, h * 2.6), z: 0, seed: (rnd() * 1e6) | 0 });
+      hz.rocks++;
+    }
+    // rock gardens on the hardest roads: a crawl over bare stone
+    if (hard >= 1.3) for (let x = 120 + rnd() * 160; x < len - 140; x += 340 + rnd() * 420) {
+      const gl = 13 + rnd() * 13, i0 = Math.round(x / DX), i1 = Math.round((x + gl) / DX);
+      let ok = i1 < n - 2;
+      for (let q = Math.max(1, i0 - 2); ok && q <= i1 + 2; q++) if (!drive(q) || P.s[q] === S_ICE || P.s[q] === S_DEEP) ok = false;
+      if (!ok) continue;
+      let g = 0; for (let q = i0; q <= i1; q++) if (Math.abs(slopeAtI(q)) > 0.2) g++;
+      if (g > (i1 - i0) / 3) continue;
+      for (let q = i0; q <= i1; q++) { P.s[q] = S_ROCK; P.soft[q] = 0; }
+      for (let rx = x + 1 + rnd() * 2; rx < x + gl - 1; rx += 1.3 + rnd() * 2.4) {
+        const hw = 0.4 + rnd() * 0.35, h = 0.09 + rnd() * 0.14;
+        bump(rx, hw, h, true);
+        if (rnd() < 0.6) P.decor.push({ t: 'rock', x: rx, r: Math.min(0.7, h * 2.6), z: 0, seed: (rnd() * 1e6) | 0 });
+      }
+      hz.gardens++;
+    }
+    // drifted stretches of deep loose snow: air down and lock up, or dig in
+    if (E.kind !== 'ice') for (let x = 90 + rnd() * 140; x < len - 90; x += 260 + rnd() * 340 / hard) {
+      const dl = 15 + rnd() * 20, i0 = Math.round(x / DX), i1 = Math.round((x + dl) / DX);
+      let snow = 0, ok = i1 < n - 2;
+      for (let q = i0; ok && q <= i1; q++) { if (!drive(q)) ok = false; else if (P.s[q] === S_SNOW) snow++; }
+      if (!ok || snow < (i1 - i0) * 0.7) continue;
+      const soft = 0.40 + rnd() * 0.16 * Math.min(1.4, hard);
+      for (let q = i0; q <= i1; q++) { P.s[q] = S_DEEP; P.soft[q] = soft; }
+      hz.drifts++;
+    }
+    // washboard climbs: frozen ruts on the steep bits — an open diff just spins here
+    {
+      let i = 3;
+      while (i < n - 5) {
+        if (!drive(i) || (P.s[i] !== S_SNOW && P.s[i] !== S_GRAVEL) || Math.abs(slopeAtI(i)) < 0.09) { i++; continue; }
+        let j = i; while (j < n - 3 && drive(j) && (P.s[j] === S_SNOW || P.s[j] === S_GRAVEL) && Math.abs(slopeAtI(j)) > 0.055) j++;
+        if ((j - i) * DX > 18 && rnd() < 0.24 * hard) { for (let q = i; q < j; q++) { P.s[q] = S_RUTS; P.soft[q] = Math.max(P.soft[q], 0.1); } hz.ruts++; }
+        i = j;
+      }
+    }
+  }
+  P.haz = hz;
   // the most hidden roads: their deep snow has no bottom a tyre can reach
   if (E.bottomless) for (let i = 0; i < P.n; i++) P.bot[i] = P.s[i] === S_DEEP ? 1 : 0;
   P.stats = pieceStats(P);
@@ -541,6 +642,7 @@ class Trip {
     o = o || {};
     this.start = start; this.dest = o.dest || null; this.mode = o.mode || (this.dest ? 'travel' : 'free');
     this.rescue = o.rescue || null; this.rescueTaken = false; this.found = o.found || (() => true);
+    this.closed = o.closed || null;   // roads snowed in for this drive (a road event): never on offer
     this.onEdge = o.onEdge || null;
     const c = this.c = new Course(1979); c.start(0); c.trip = this;
     this.visited = new Set([start]); this.pending = null; this.done = false; this.endNode = null; this.decisions = [];
@@ -581,9 +683,10 @@ class Trip {
   // where you can go from a node: no U-turns, secret roads only once found, and only roads that still lead to
   // where the drive is headed without coming back through a place you have already been
   options(node, inEdge) {
-    const out = [];
+    const out = [], av = base => this.closed ? new Set([...base, ...this.closed]) : base;
     for (const a of ADJ[node]) {
       if (a.edge === inEdge) continue;
+      if (this.closed && this.closed.has(a.edge)) continue;   // snowed in: not on offer this drive
       const E = EDGES[a.edge]; if (E.secret && !this.found(E.secret)) continue;
       let d = 0;
       if (this.rescue && !this.rescueTaken) {
@@ -593,15 +696,15 @@ class Trip {
         else {
           d = Infinity;
           for (const [p, q] of [[R.a, R.b], [R.b, R.a]]) {
-            const r1 = a.other === p ? { d: 0 } : route(a.other, p, this.visited, this.found); if (r1.d === Infinity) continue;
-            const r2 = q === this.dest ? { d: 0 } : route(q, this.dest, new Set([p]), this.found);
+            const r1 = a.other === p ? { d: 0 } : route(a.other, p, av(this.visited), this.found); if (r1.d === Infinity) continue;
+            const r2 = q === this.dest ? { d: 0 } : route(q, this.dest, av(new Set([p])), this.found);
             d = Math.min(d, E.len + nodeLen(a.other) + r1.d + R.len + r2.d);
           }
         }
       } else if (this.dest) {
         if (a.other === this.dest) d = E.len;
         else if (this.visited.has(a.other)) d = Infinity;
-        else d = E.len + nodeLen(a.other) + route(a.other, this.dest, this.visited, this.found).d;
+        else d = E.len + nodeLen(a.other) + route(a.other, this.dest, av(this.visited), this.found).d;
       }
       if (!(d < Infinity)) continue;
       out.push({ edge: a.edge, other: a.other, rev: a.rev, d, rescue: !!(this.rescue && !this.rescueTaken) && (a.edge === this.rescue.edge || false) });

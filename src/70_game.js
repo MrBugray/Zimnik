@@ -4,16 +4,19 @@ function fmtTime(s) { s = Math.max(0, Math.round(s)); return Math.floor(s / 60) 
 const SAVE_KEY = 'zimnik.v2';
 const REPAIR_BASE = { engine: 6000, gearbox: 3600, tires: 2200, springs: 1600, body: 4500 };
 const H_STEP = 1 / 120;
+const FORK_BRAKE = { throttle: 0, brake: 1 };   // standing on the brake while the junction card waits
 const TOWBACK = 400;
 
 class Game {
   constructor() {
     this.loadSave();
     const D = this.data;
-    this.settings = Object.assign({ sound: true, quality: 'auto', fps: 'auto', autoHold: true, unlockAll: true, knobLook: 'face', sk12: 'a', weatherMode: 'fixed', autoGear: true }, D.settings || {});
+    this.settings = Object.assign({ sound: true, quality: 'auto', fps: 'auto', autoHold: true, knobLook: 'face', sk12: 'a', autoGear: true }, D.settings || {});
+    // the weather and the time of day run on their own now: cycling weather, flowing time
+    this.settings.weatherMode = 'random';
     KNOB_PREF.sk12 = this.settings.sk12 === 'b' ? 'b' : 'a';
     this.perf = Object.assign({ scale: 1.5, fps: 60 }, D.perf || {});
-    this.weather = WEATHER[D.weather] ? D.weather : 'clear'; this.timeKey = TIMES[D.time] ? D.time : 'noon'; this.timeFlow = !!D.timeFlow;
+    this.weather = WEATHER[D.weather] ? D.weather : 'clear'; this.timeKey = TIMES[D.time] ? D.time : 'noon'; this.timeFlow = true;
     this.econ = new Economy(D.world);
     for (const id in ART_IMG) artImg(id);   // start decoding drawn trucks now
     this.sound = new Sound(); this.sound.on = this.settings.sound;
@@ -44,7 +47,8 @@ class Game {
   applyQuality() {
     const q = this.settings.quality;
     this.R.scaleCap = q === 'high' ? 2 : q === 'low' ? 1 : this.perf.scale;
-    this.R.quality = q === 'low' ? 0.6 : 1;
+    // when auto has already stepped the resolution all the way down, thin the world detail out too
+    this.R.quality = q === 'low' ? 0.6 : (q === 'auto' && this.perf.scale <= 1.01 ? 0.75 : 1);
     if (this.hud) this.hud.resize();
   }
   fpsCap() {
@@ -79,8 +83,8 @@ class Game {
       D = { v: 2, cash: 3000 + (old.cash || 0), settings: old.settings, weather: old.weather, time: old.time, timeFlow: old.timeFlow, best: {}, secrets: old.secrets || {}, truck: 'cc' };
     }
     D.trucks = D.trucks || {}; D.found = D.found || {}; D.secrets = D.secrets || {}; D.best = D.best || {}; D.world = D.world || {};
-    // normal way: you own the old Polaris and buy the rest; sandbox (or a save from before modes): everything is yours
-    if (D.mode === 'normal') { D.ownedTrucks = D.ownedTrucks || {}; D.ownedTrucks.cc = 1; } else D.ownedTrucks = D.ownedTrucks || null;
+    // you own the old Polaris and buy the rest
+    D.ownedTrucks = D.ownedTrucks || {}; D.ownedTrucks.cc = 1;
     // 0.5.2 had the drawn 143H as a separate test truck; it is the Skinnerd tractor now, which keeps its own save
     if (D.truck === 'skx') D.truck = 'skt';
     delete D.trucks.skx;
@@ -112,6 +116,8 @@ class Game {
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(D)); } catch (e) { }
   }
   secret(k) { return !!this.data.secrets[k]; }
+  // wipe the save and boot fresh
+  newGame() { try { localStorage.removeItem(SAVE_KEY); } catch (e) {} location.reload(); }
   get truck() { return this.sim.truck; }
   get loc() { return this.cfg().loc; }
   cfg(id) { return this.data.trucks[id || this.gid]; }
@@ -132,38 +138,23 @@ class Game {
     this.palDirty = true;
   }
   updateTemp() { const W = this.W || WEATHER[this.weather], e = sunElev(this.hour); this.env.temp = W.temp + (this.weather === 'thaw' ? 0 : e < -6 ? -6 : e < 2 ? -3 : 0); }
+  // the flowing hour mapped back onto the four named times of day (pay, lights and the save all read timeKey)
+  syncTimeKey() { const h = this.hour; this.timeKey = h >= 20 || h < 6 ? 'night' : h < 11.5 ? 'morning' : h < 15.5 ? 'noon' : 'dusk'; }
   setOption(k, v) {
-    if (k === 'weather') {
-      if (v === 'random') { this.settings.weatherMode = 'random'; this.data.wx = null; this.wxInit(); }
-      else { this.settings.weatherMode = 'fixed'; this.data.wx = null; this.weather = v; this.W = WEATHER[v]; this.applyConditions(); }
-    }
-    else if (k === 'knob') this.settings.knobLook = v;
+    if (k === 'knob') this.settings.knobLook = v;
     else if (k === 'gear') this.settings.autoGear = v === 'auto';
     else if (k === 'sk12') {
       this.settings.sk12 = v; KNOB_PREF.sk12 = v;
       // the truck in hand changes gate at once (its reverse gears with it)
       const t = this.sim && this.sim.truck; if (t) { t.gate = gateOf(t.gb); t.revs = t.gate.revs || [t.gb.rev]; if (t.gear < -t.revs.length) t.gear = -t.revs.length; if (this.hud && this.hud.knob) this.hud.knob.attach(t); }
     }
-    else if (k === 'time') { this.timeKey = v; this.applyConditions(); }
-    else if (k === 'flow') this.timeFlow = v === 'on';
     else if (k === 'sound') { this.settings.sound = v === 'on'; this.sound.setOn(this.settings.sound); }
     else if (k === 'quality') { this.settings.quality = v; if (v === 'auto') this.perf.scale = 1.5; this.applyQuality(); }
     else if (k === 'fps') { this.settings.fps = v; if (v === 'auto') this.perf.fps = 60; }
-    else if (k === 'unlock') { this.setMode(v === 'on' ? 'sandbox' : 'normal'); }
     else if (k === 'hold') { this.settings.autoHold = v === 'on'; if (this.state === 'drive' && this.truck) this.truck.autoHold = this.settings.autoHold; }
     this.saveNow();
   }
-  // ---------- the two ways to play: sandbox (everything free) or the normal way (earn it) ----------
-  setMode(m) {
-    this.data.mode = m === 'normal' ? 'normal' : 'sandbox';
-    this.settings.unlockAll = this.data.mode === 'sandbox';
-    if (this.data.mode === 'normal') {
-      const o = this.data.ownedTrucks = this.data.ownedTrucks || {}; o.cc = 1;
-      if (!this.ownsTruck(this.gid)) this.gid = 'cc';
-    }
-    this.saveNow();
-  }
-  ownsTruck(id) { id = id || this.gid; return this.settings.unlockAll || !TRUCKS[id].price || !!(this.data.ownedTrucks && this.data.ownedTrucks[id]); }
+  ownsTruck(id) { id = id || this.gid; return !TRUCKS[id].price || !!(this.data.ownedTrucks && this.data.ownedTrucks[id]); }
   buyTruck(id) {
     id = id || this.gid; const T = TRUCKS[id], price = T.price || 0;
     if (this.ownsTruck(id)) return;
@@ -246,7 +237,7 @@ class Game {
     const ids = Object.keys(TRUCKS); this.gid = ids[(ids.indexOf(this.gid) + d + ids.length) % ids.length];
     this.gSel = null; this.fuelSel = null; this.buildHub(); this.hud.renderGarage(); this.saveNow();
   }
-  workshopHere() { return !this.roadOf() && (!!NODES[this.loc].garage || this.settings.unlockAll); }
+  workshopHere() { return !this.roadOf() && !!NODES[this.loc].garage; }
   // ---------- fuel: bought when you choose, as much as you choose ----------
   tankCap(id) { id = id || this.gid; const c = this.cfg(id); return GEOM[geomKey(id, c.parts)].tank + TANKS[c.parts.tank].extra + addonFuel(c.addons); }
   fuelType(id) { return ENGINES[this.cfg(id).parts.engine].fuel; }
@@ -286,8 +277,7 @@ class Game {
       const pp = this.cfg(id).parts; J.units = capOf(id, J.cargo, pp); if (!J.units) return;
       J.kg = unitKg(id, J.cargo, pp); J.left = J.units;
       J.pay = this.econ.pay(J.cargo, J.units * J.kg / 1000, J.dist / 1000, J.dem, this.payMult());
-      // urgent and priority hauls are due on the district clock
-      const T = this.jobTerms(J, id); J.tier = T.tier; J.bonus = T.bonus; J.t0 = Math.round(this.clock); J.due = T.allow ? Math.round(this.clock + T.allow) : null;
+      J.t0 = Math.round(this.clock);
     }
     J.mult = this.payMult(); J.beacon = !!this.addons().beacon; J.from = this.loc;
     this.job = J;
@@ -313,9 +303,20 @@ class Game {
     this.stranded = null; this.strandAt = null; this.roadside = []; this.mapOpen = false;
     this.legFrom = R ? null : this.loc;
     const rigNow = this.gid === 'skt' && J.kind === 'haul' ? TRAILER_FOR[J.cargo] : null;
+    // road events: about one drive in ten has something waiting out there — a road snowed in and closed,
+    // or a driver stuck in a drift who could use a pull
+    this.closed = null; this.closedEdge = null; this.stuck = null; this.stuckEvent = null; this.eventAt = null;
+    if (!R && !inYard && J.to && (J.kind === 'haul' || J.kind === 'tow' || J.kind === 'travel') && Math.random() < 0.10) {
+      const f = s => this.secret(s), r0 = route(this.loc, J.to, null, f);
+      if (r0.edges.length) {
+        const pick = r0.edges[Math.floor(Math.random() * r0.edges.length)];
+        if (Math.random() < 0.5 && route(this.loc, J.to, new Set([pick]), f).d < Infinity) { this.closed = new Set([pick]); this.closedEdge = pick; }
+        else this.stuckEvent = { edge: pick, s: Math.round(60 + Math.random() * Math.max(10, EDGES[pick].len - 120)) };
+      }
+    }
     const T = this.trip = new Trip(R ? null : this.loc, {
       dest: J.to, mode: J.kind === 'free' ? 'free' : J.kind === 'travel' ? 'travel' : 'job', onRoad: R ? { edge: R.edge, s: R.s, dir: R.dir } : null, inYard: !!inYard, tail: rigNow ? 16 : 0,
-      rescue: J.kind === 'rescue' || J.kind === 'recover' ? { edge: J.edge, s: J.s } : null, found: s => this.secret(s), onEdge: (o, r, tp) => this.onEdge(o, r, tp),
+      rescue: J.kind === 'rescue' || J.kind === 'recover' ? { edge: J.edge, s: J.s } : null, found: s => this.secret(s), closed: this.closed, onEdge: (o, r, tp) => this.onEdge(o, r, tp),
     });
     this.course = T.c;
     this.env = this.envFor(); this.applyConditions();
@@ -327,7 +328,7 @@ class Game {
     if (!this.settings.autoGear) { tr.mode = 'M'; tr.gear = 0; }
     this.R.bg.setZones(T.c); this.R.wr.parts.length = 0;
     this.runT = 0; this.iceCrack = 0; this.iceWarned = false; this.thawWarned = false;
-    this.tows = 0; this.towCost = 0; this.fuelCost = 0; this.feeCost = 0; this.secretT = 0; this.hinted = {}; this.lostWarn = 0; this.zoneHinted = false; this.parkHint = null; this.leftAt = null;
+    this.tows = 0; this.towCost = 0; this.fuelCost = 0; this.feeCost = 0; this.secretT = 0; this.hinted = {}; this.lostWarn = 0; this.zoneHinted = false; this.parkHint = null; this.leftAt = null; this.forkHold = false;
     this.applyConditions();
     for (let i = 0; i < 90; i++) this.sim.step(H_STEP, NOINPUT);
     if (J.kind === 'tow') this.hookBroken();
@@ -337,17 +338,19 @@ class Game {
     this.state = 'drive'; this.hud.show('drive'); this.sound.init();
     const to = J.to ? NODES[J.to].name : '';
     const dist = J.dist || (J.to ? route(T.start, J.to, null, s => this.secret(s)).d : 0), need = dist && !inYard ? this.fuelNeed(dist) : 0, tight = need && tr.fuel < need;
-    const due = this.dueLeft(J), dueTxt = due !== null ? ' · due in ' + fmtTime(Math.max(0, due)) : '';
     this.hud.toast((inYard ? 'Drive in and unload: ' + CARGO[J.cargo].name + ' for ' + to : J.kind === 'rescue' ? 'A truck broke down on the ' + EDGES[J.edge].name + '. Tow it to ' + to
       : J.kind === 'recover' ? 'Your ' + TRUCKS[J.truck].name + ' is on the ' + EDGES[J.edge].name + '. Tow it to ' + to
-        : J.kind === 'tow' ? 'Tow the broken truck to ' + to : J.kind === 'haul' ? CARGO[J.cargo].name + ' for ' + to + dueTxt : J.kind === 'travel' ? 'Driving empty to ' + to : 'Free drive. Park in any yard you like')
+        : J.kind === 'tow' ? 'Tow the broken truck to ' + to : J.kind === 'haul' ? CARGO[J.cargo].name + ' for ' + to : J.kind === 'travel' ? 'Driving empty to ' + to : 'Free drive. Park in any yard you like')
       + (tight ? ' · Fuel is tight: about ' + need + ' L needed, ' + Math.round(tr.fuel) + ' L in the tank' : ''), tight ? 'warn' : '', tight ? 5 : 3.6);
+    if (this.closedEdge) this.hud.toast('Word in the yard: the ' + EDGES[this.closedEdge].name + ' is snowed in — closed. You will have to go round', 'warn', 5);
+    else if (this.stuckEvent) this.hud.toast('A driver on the CB is stuck in a drift on the ' + EDGES[this.stuckEvent.edge].name + '. Stop and pull them out, or drive on by', '', 5);
     this.saveNow();
   }
   onEdge(o, r, T) {
     const c = T.c;
     for (const f of FINDS) if (f.edge === o.edge && !this.data.found[f.id]) c.add('crate', r.X(f.s), { find: f, z: 0 });
     if (this.job && (this.job.kind === 'rescue' || this.job.kind === 'recover') && o.edge === this.job.edge && this.strandAt === null) this.strandAt = r.X(this.job.s);
+    if (this.stuckEvent && o.edge === this.stuckEvent.edge && this.eventAt === null) this.eventAt = r.X(this.stuckEvent.s);
     for (const id in TRUCKS) {
       const R = this.data.trucks[id].road;
       if (id === this.gid || !R || R.edge !== o.edge || (this.job && this.job.kind === 'recover' && this.job.truck === id)) continue;
@@ -380,9 +383,9 @@ class Game {
     else { this.hud.show('garage'); this.hud.renderGarage(); }
   }
   // ---------- garage actions ----------
-  // test mode: every part and add-on that fits this truck counts as owned and fits for free
-  owns(cat, pid) { const s = TRUCKS[this.gid].stock[cat] === pid; return s || this.settings.unlockAll || !!this.cfg().owned[cat + ':' + pid]; }
-  ownsAddon(k) { return this.settings.unlockAll || !!this.cfg().ownedAdd[k]; }
+  // a part counts as owned if it is stock on this truck or was bought (or salvaged) before
+  owns(cat, pid) { const s = TRUCKS[this.gid].stock[cat] === pid; return s || !!this.cfg().owned[cat + ':' + pid]; }
+  ownsAddon(k) { return !!this.cfg().ownedAdd[k]; }
   // a new body (the Polaris's cab part) carries a different load: a haul aboard is cut down to what fits now
   refitJob(id) {
     const c = this.cfg(id), J = c.job; if (!J || J.kind !== 'haul') return;
@@ -434,11 +437,13 @@ class Game {
   junctionCard(p) {
     const T = this.trip, W = this.weather, N = NODES[p.node], loaded = this.job && this.job.kind === 'haul';
     const warn = E => {
-      const st = edgePiece(E.id).stats;
+      const st = edgePiece(E.id).stats, hz = edgePiece(E.id).haz || {};
       if (W === 'thaw' && st.ice > 60) return 'ice is soft in the thaw';
       if ((W === 'blizzard' || W === 'snow') && st.deep > 150) return 'deep drifts in this weather';
       if (st.maxG > 0.18 && TRUCKS[this.gid].awd === false && loaded) return 'very steep for a loaded ' + TRUCKS[this.gid].drive;
       if (st.ice > 300 && loaded) return 'long stretch on the ice: mind the weight';
+      if (hz.gardens) return 'rock gardens on this road: crawl them';
+      if (hz.rocks > 4) return 'boulders on the road';
       return '';
     };
     const opts = p.opts.map((o, i) => {
@@ -452,8 +457,9 @@ class Game {
   chooseRoad(edge, auto) {
     const T = this.trip; if (!T || !T.pending) return;
     if (!T.choose(edge)) return;
+    this.forkHold = false;
     this.R.bg.setZones(T.c); this.hud.hideFork();
-    this.hud.toast((auto ? 'No choice made. ' : '') + 'Taking the ' + EDGES[edge].name, auto ? 'warn' : 'good');
+    this.hud.toast('Taking the ' + EDGES[edge].name, 'good');
     this.sound.sfx('click');
     this.placeStranded();
   }
@@ -488,6 +494,27 @@ class Game {
     if (this.strandAt === null || this.stranded || !this.sim) return;
     const S = this.strandedWho(), q = this.standTruck(S.id, S.cfg, this.strandAt, S.cargo, S.rig, S.state);
     this.stranded = Object.assign(q, { ditch: true, id: S.id, cfg: S.cfg, own: S.own, cargo: S.cargo, rig: S.rig });
+  }
+  // a driver stuck in a drift (random road event): pulled over, dug in, hazard triangle out — help or drive by
+  placeStuck() {
+    if (this.eventAt === null || this.stuck || !this.sim) return;
+    const id = Math.random() < 0.5 ? 'cc' : 'bars', x = this.eventAt;
+    const q = this.standTruck(id, this.brokenCfg(id), x, null, null, undefined);
+    this.stuck = Object.assign(q, { ditch: true, id, helped: false });
+    this.eventAt = null;
+    // the snow they dug out getting stuck
+    for (let i = 0; i < 10; i++) this.R.wr.spawn({ x: x - 2 - Math.random() * 5, y: this.course.hAt(x) + 0.2, vx: (Math.random() - 0.5) * 3, vy: 1 + Math.random() * 2, r: 0.12, gr: 0.4, life: 1.1, t: 0, k: 'snow', grav: 1 });
+  }
+  // pull them free with the tow bar: a few minutes on the clock and a thank-you in cash
+  helpStuck() {
+    const sk = this.stuck; if (!sk) return;
+    const pay = Math.round((300 + Math.random() * 400) / 10) * 10;
+    this.cash += pay; this.addTime(240);
+    if (sk.semi) this.sim.removeTruck(sk.semi, false);
+    this.sim.removeTruck(sk.truck, false);
+    this.stuck = null;
+    this.sound.sfx('good');
+    this.hud.toast('You pull them out of the drift. They press ' + money(pay) + ' on you · +' + fmtTime(240) + ' on the clock', 'good', 4);
   }
   placeRoadside() {
     if (!this.sim || !this.roadside) return;
@@ -559,7 +586,8 @@ class Game {
   actionLabel() {
     if (this.state !== 'drive') return null;
     const f = this.nearFind(); if (f) return 'Pick up: ' + f.find.name;
-    const st = this.stranded, tr = this.truck, J = this.job;
+    const st = this.stranded, tr = this.truck, J = this.job, sk = this.stuck;
+    if (sk && !sk.helped && Math.abs(tr.vF) < 0.8 && Math.abs(tr.x - sk.x) < 14) return 'Pull the stuck driver out';
     if (st && st.ditch && Math.abs(tr.vF) < 0.8) { const hx = tr.chassis.getWorldPoint(V2(tr.G.hitch[0], tr.G.hitch[1])).x; if (hx > st.x + 2 && hx < st.x + 16) return 'Hook up tow bar'; }
     const z = this.zoneHere(), stop = this.stopped(), atDest = z && J.to === z.node && z.role === 'end' && stop, inside = z && st && !st.ditch && st.truck.x > z.x0 - 12;
     // a rescued truck in the destination yard can be dropped off, on the bar or not; yours in any yard
@@ -575,6 +603,7 @@ class Game {
   doAction() {
     const a = this.actionLabel(); if (!a) return;
     if (a.indexOf('Pick up') === 0) this.collect(this.nearFind());
+    else if (a === 'Pull the stuck driver out') this.helpStuck();
     else if (a === 'Hook up tow bar') this.hookStranded();
     else if (a === 'Re-attach tow bar') this.rehook();
     else { this.sound.sfx('unload'); this.finish(true, '', this.zoneHere().node); }
@@ -595,11 +624,7 @@ class Game {
     if (J.to || T.done) marks.push({ k: 'goal', f: T.done ? at(T.c.zones[T.c.zones.length - 1].x0 + 20) : 0.995 });
     const to = J.to ? NODES[J.to].name : '';
     const name = J.kind === 'haul' ? CARGO[J.cargo].name + ' → ' + to : J.kind === 'rescue' ? 'Rescue → ' + to : J.kind === 'tow' ? 'Tow → ' + to : J.kind === 'recover' ? TRUCKS[J.truck].name.split(' ')[0] + ' → ' + to : J.kind === 'travel' ? 'To ' + to : 'Free drive';
-    // the deadline counts down on the district clock; late, it shows what the delivery is losing
-    const due = this.dueLeft(J);
-    let dl = '';
-    if (due !== null) dl = due >= 0 ? ' · <span class="dl' + (due < 60 ? ' warn' : '') + '">⏱ ' + fmtTime(due) + ' left</span>' : ' · <span class="dl bad">late ' + fmtTime(-due) + ' · −' + Math.round((1 - latePay(-due)) * 100) + '%</span>';
-    return { f, marks, label: km(Math.max(0, done)) + ' / ' + (J.to ? km(tot) : '–') + ' km · ' + name + ' · ' + fmtTime(this.runT) + dl };
+    return { f, marks, label: km(Math.max(0, done)) + ' / ' + (J.to ? km(tot) : '–') + ' km · ' + name + ' · ' + fmtTime(this.runT) };
   }
   // wear, damage and dirt stay with a truck until it is repaired in a workshop
   applyWear(cfg, tr) {
@@ -618,7 +643,7 @@ class Game {
   finish(ok, why, at, how) {
     const tr = this.truck, J = this.job, T = this.trip, cfg = this.cfg(), st = this.stranded, earn = [], C = J.cargo && CARGO[J.cargo];
     const arrived = ok && !how && !!at, atDest = arrived && at === J.to;
-    let delivered = 0, tonnes = 0, note = why || '', late = null;
+    let delivered = 0, tonnes = 0, note = why || '';
     // where your truck ends up
     if (!ok) {
       const back = this.legFrom || this.closestPlace().node, q = this.towQuote(this.spotDist(this.spotHere(), back), !!tr.semi);
@@ -634,11 +659,7 @@ class Game {
       if (atDest) {
         delivered = left; tonnes = delivered * J.kg / 1000;
         if (delivered) {
-          const gross = J.pay.base + J.pay.perT * tonnes;
           earn.push(['Delivery', J.pay.base], [delivered + ' ' + (delivered === 1 ? C.unit : C.units), J.pay.perT * tonnes]);
-          late = J.due ? this.clock - J.due : null;
-          if (late !== null && late > 0) { const k = latePay(late); earn.push(['Late by ' + fmtTime(late) + ' · −' + Math.round((1 - k) * 100) + '%', -gross * (1 - k)]); }
-          else if (late !== null && J.bonus) earn.push([JOB_TIERS[J.tier].name + ', on time · +' + Math.round(J.bonus * 100) + '%', gross * J.bonus]);
         }
         cfg.job = null;
       } else if (left > 0) { J.left = left; cfg.job = J; if (ok) note += (note ? ' ' : '') + 'The job carries on from ' + (endAt ? NODES[endAt].name : 'here') + '.'; }
@@ -675,7 +696,7 @@ class Game {
     const place = n => NODES[n].name;
     const title = !ok ? 'Through the ice' : how === 'left' && !at ? 'Left on the road' : how === 'towed' ? 'Towed to ' + place(at)
       : J.kind === 'rescue' && atDest ? 'Rescue complete!' : J.kind === 'tow' && atDest ? 'Tow job done!' : J.kind === 'recover' && rec ? 'Truck recovered!'
-        : J.kind === 'haul' && atDest ? (delivered < J.units ? (delivered ? 'Delivered, partly' : 'Nothing delivered') : late > 0 ? 'Delivered, late' : 'Delivered!') : 'Parked at ' + place(endAt);
+        : J.kind === 'haul' && atDest ? (delivered < J.units ? (delivered ? 'Delivered, partly' : 'Nothing delivered') : 'Delivered!') : 'Parked at ' + place(endAt);
     const jobRow = J.kind === 'haul' ? C.name + ': ' + place(J.from) + ' → ' + place(J.to) : J.kind === 'recover' ? 'Fetch the ' + TRUCKS[J.truck].name + ' → ' + place(J.to)
       : J.kind === 'rescue' || J.kind === 'tow' ? (J.kind === 'rescue' ? 'Rescue' : 'Tow') + ' → ' + place(J.to) : endAt ? 'Drive to ' + place(endAt) : 'Drive';
     const rows = [['Job', jobRow], ['Roads', names.join(' · ') || '—'], ['Conditions', W.name + ' · ' + Tm.name + ' · ' + Math.round(this.env.temp) + '°C'], ['Time', fmtTime(this.runT) + (best ? '  ★ best' : '')]];
@@ -684,7 +705,6 @@ class Game {
     else if (J.kind === 'haul' && atDest) rows.push([C.name + ' delivered', delivered + ' / ' + J.units + ' ' + C.units]);
     else if (J.kind === 'haul' && cfg.job) rows.push([C.name + ' aboard', J.left + ' / ' + J.units + ' ' + C.units]);
     else rows.push(['Salvage found', FINDS.filter(f => this.data.found[f.id]).length + ' / ' + FINDS.length]);
-    if (J.kind === 'haul' && J.due) rows.push(['Deadline', atDest ? (late > 0 ? 'late by ' + fmtTime(late) : 'on time, ' + fmtTime(-late) + ' to spare') : cfg.job ? (this.dueLeft(J) >= 0 ? fmtTime(this.dueLeft(J)) + ' left' : 'late by ' + fmtTime(-this.dueLeft(J))) : '—']);
     rows.push(['Damage', Math.round(tr.damage) + '%'], ['Fuel', 'used ' + Math.round(tr.fuelUsed) + ' L · ' + Math.round(cfg.fuel) + ' L left'], ['Truck now', this.whereText()]);
     this.hud.showResults({ title, note: note.trim(), rows, pay, total, wear: wl.length ? 'Wear this run: ' + wl.join(', ') + '. Repair it in a workshop.' : '', ok });
     if (ok && (atDest || rec)) this.sound.sfx('good');
@@ -710,9 +730,9 @@ class Game {
     else if (garage) this.stepSim(this.gsim, dt, NOINPUT, 'gacc');
     else if (hub) this.stepSim(this.sim, dt, NOINPUT, 'acc');
     if (this.state === 'drive' || this.state === 'pause' || this.state === 'results') this.updateCamera(dt);
-    if (this.timeFlow && this.state === 'drive') { this.hour = (this.hour + dt / 60) % 24; this.updateTemp(); }
-    // the palette moves in 3-minute steps of game time, so cached art is redrawn every few seconds, not every frame
-    const hq = Math.round(this.hour * 20) / 20;
+    if (this.timeFlow && this.state === 'drive') { this.hour = (this.hour + dt / 60) % 24; this.updateTemp(); this.syncTimeKey(); }
+    // the palette moves in 15-minute steps of game time, so cached art is redrawn every few seconds, not every frame
+    const hq = Math.round(this.hour * 4) / 4;
     if (hq !== this.palHourQ) { this.palHourQ = hq; this.palDirty = true; }
     if (this.palDirty || !this.pal) { this.pal = computePalette(hq, this.weather, this.W); this.lit = makeLit(this.pal); this.palDirty = false; this.palVer++; }
     const sim = garage ? this.gsim : this.sim;
@@ -736,7 +756,21 @@ class Game {
     this.camVx = lerp(this.camVx, dt > 0 ? (this.cam.x - ox) / dt : 0, 0.15);
   }
   update(dt) {
-    this.stepSim(this.sim, dt, this.hud.readInput(), 'acc');
+    const tp = this.trip;
+    // the drive waits at a junction until a road is picked: no clock, no weather, no rolling on
+    if (this.forkHold) { if (tp && tp.pending) return; this.forkHold = false; }
+    // no road picked by the end of the pad: brake to a stop there and hold the drive for the choice
+    // (never right at the spawn: leaving a yard, you get to roll up to the gate first)
+    const pu = tp && tp.pending;
+    if (pu && this.truck.x >= pu.auto - 30 && this.truck.x > tp.spawnX + 10) {
+      this.stepSim(this.sim, dt, FORK_BRAKE, 'acc');
+      if (Math.abs(this.truck.vF) < 0.4) {
+        this.forkHold = true;
+        if (!pu.shown) { pu.shown = true; this.hud.showFork(this.junctionCard(pu)); pu.opts.forEach((o, i) => setTimeout(() => edgePiece(o.edge), 120 + i * 90)); }
+        this.hud.toast('Stopped at the junction — pick your road', '', 3);
+        return;
+      }
+    } else this.stepSim(this.sim, dt, this.hud.readInput(), 'acc');
     this.runT += dt; this.clock += dt; this.wxStep(dt);
     const tr = this.truck, c = this.course, W = this.W, env = this.env, cfg = this.cfg(), T = this.trip;
     if (W.accum) env.extraSnow = Math.min(0.3, env.extraSnow + W.accum * dt);
@@ -755,16 +789,15 @@ class Game {
     }
     this.sim.events.length = 0;
     const x = tr.x;
-    // junctions: the card comes up well before, and if nothing is picked the shortest road is taken
+    // junctions: the card comes up well before the pad; past it the truck stops and waits (above)
     const p = T.pending;
-    if (p) {
-      if (!p.shown && x >= p.show) {
-        p.shown = true; this.hud.showFork(this.junctionCard(p));
-        // build the roads on offer now, a little at a time, so taking one later doesn't stall a frame
-        p.opts.forEach((o, i) => setTimeout(() => edgePiece(o.edge), 120 + i * 90));
-      }
-      if (x >= p.auto) this.chooseRoad(p.opts[0].edge, true);
+    if (p && !p.shown && x >= p.show) {
+      p.shown = true; this.hud.showFork(this.junctionCard(p));
+      // build the roads on offer now, a little at a time, so taking one later doesn't stall a frame
+      p.opts.forEach((o, i) => setTimeout(() => edgePiece(o.edge), 120 + i * 90));
     }
+    // a stuck driver (road event) appears once the bend ahead would hide them no longer
+    if (this.eventAt !== null && !this.stuck && x > this.eventAt - 420) this.placeStuck();
     // secret roads: stop by the old sign, the fishing hut, the village notice board
     let near = null;
     for (const d of c.decorIn(x - 40, x + 12)) if (d.secret && !this.secret(d.secret)) {
@@ -803,7 +836,9 @@ window.__z = {
   // test hook: o = { truck, job (cargo name, 'rescue', 'tow', 'travel', 'free'), to, at (start location), weather, time, roads: [edge ids to prefer], fuel (litres) }
   start(o) {
     const G = window.__game; o = o || {};
-    if (o.truck) G.gid = o.truck; if (o.weather) G.weather = o.weather; if (o.time) G.timeKey = o.time;
+    if (o.truck) { G.gid = o.truck; (G.data.ownedTrucks = G.data.ownedTrucks || {})[o.truck] = 1; } // tests may drive any truck
+    if (o.time) G.timeKey = o.time;
+    if (o.weather) { G.weather = o.weather; G.settings.weatherMode = 'fixed'; G.data.wx = null; G.W = WEATHER[o.weather]; }
     if (o.at) G.cfg().loc = o.at;
     if (!o.keep) { G.cfg().road = null; G.cfg().job = null; }
     G.cfg().fuel = o.fuel !== undefined ? o.fuel : G.tankCap();   // tests start full unless told otherwise
