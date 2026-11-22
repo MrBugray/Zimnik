@@ -321,8 +321,7 @@ class BgRenderer {
       if (fog >= 0.99) continue;
       const col = key => {
         let c = P[key];
-        if (!c) {
-          if (key === 'trunk') c = P.trunk;
+        if (!c) {          if (key === 'trunk') c = P.trunk;
           else if (key === 'house') c = mixc(hex('#6b4b36'), P[L.id === 'near' ? 'nearTree' : 'midTree'], 0.55);
           else if (key === 'roof') c = mixc(hex('#5a5550'), P.midTree, 0.6);
           else if (key === 'roofSnow') c = P[L.id === 'near' ? 'nearSnow' : 'midSnow'];
@@ -337,6 +336,35 @@ class BgRenderer {
         if (key === 'win') return css(c);
         return css(fog > 0 ? mixc(c, fc, Math.min(1, fog)) : c);
       };
+      // far layer: the painted winter panorama, palette-tinted and mirror-tiled so it wraps seamlessly
+      if (li === 0 && typeof BG_PANO !== 'undefined' && BG_PANO.ready) {
+        const key = R.palVer + ':' + Math.round(fog * 16);
+        if (!this._pano || this._pano.key !== key) {
+          const cv = (this._pano && this._pano.cv) || document.createElement('canvas');
+          cv.width = BG_PANO.w; cv.height = BG_PANO.h;
+          const g = cv.getContext('2d');
+          g.globalCompositeOperation = 'source-over'; g.clearRect(0, 0, cv.width, cv.height);
+          g.drawImage(BG_PANO.img, 0, 0);
+          g.globalCompositeOperation = 'multiply'; g.fillStyle = css(mulc([255, 255, 255], P.amb)); g.fillRect(0, 0, cv.width, cv.height);
+          if (fog > 0) { g.globalCompositeOperation = 'source-over'; g.fillStyle = css(P.fogc, Math.min(1, fog)); g.fillRect(0, 0, cv.width, cv.height); }
+          this._pano = { key, cv };
+        }
+        const s2 = H * 0.60 / BG_PANO.h, tw = BG_PANO.w * s2, th = BG_PANO.h * s2, top = oy - th;
+        let n = Math.floor((-ox) / tw);
+        for (let sx = ox + n * tw; sx < W; sx += tw, n++) {
+          if (sx + tw < 0) continue;
+          if (n & 1) { ctx.save(); ctx.translate(Math.round(sx) + tw, top); ctx.scale(-1, 1); ctx.drawImage(this._pano.cv, 0, 0, tw, th); ctx.restore(); }
+          else ctx.drawImage(this._pano.cv, Math.round(sx), top, tw, th);
+        }
+        let yb = Math.floor(oy);
+        if (yb < H) {
+          let to = Math.min(H, R.groundY || H);
+          const N = LAYERS[1], noy = H * N.base + clamp(R.camDy * N.p * 0.1, -H * 0.06, H * 0.06) * ppm / 30;
+          to = Math.min(to, Math.ceil(noy + GROUND_DIP[1] * ppm * N.s) + 2);
+          if (to > yb) { ctx.fillStyle = col('far'); ctx.fillRect(0, yb, W, to - yb); }
+        }
+        continue;
+      }
       const lx0 = (-ox) / sc, lx1 = (W - ox) / sc, k0 = Math.floor(lx0 / L.cw), k1 = Math.floor(lx1 / L.cw);
       const scQ = SPR.ppmQ(sc * RES[li]), ver = R.palVer + '@' + scQ.toFixed(3);
       const lw = (L.id === 'near' ? 1.6 : 1.1) * R.k / sc, outlined = (L.id === 'near' || L.id === 'mid') && fog < 0.7;
