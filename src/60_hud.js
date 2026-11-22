@@ -1,5 +1,5 @@
 // ===== HUD: controls, gauges, garage UI, overlays =====
-const TABS = [['paint', 'Paint'], ['body', 'Body'], ['engine', 'Engine'], ['gearbox', 'Gearbox'], ['wheels', 'Wheels'], ['chassis', 'Chassis'], ['service', 'Service'], ['fuel', 'Fuel']];
+const TABS = [['paint', 'Paint'], ['body', 'Body'], ['engine', 'Engine'], ['gearbox', 'Gearbox'], ['wheels', 'Wheels'], ['chassis', 'Chassis'], ['service', 'Service'], ['fuel', 'Fuel'], ['bank', 'Bank']];
 const TAB_CATS = { engine: ['engine', 'tune', 'radiator'], gearbox: ['gearbox'], wheels: ['tires', 'lift', 'ctis'], chassis: ['springs', 'brakes', 'tank'] };
 const money = v => Math.round(v).toLocaleString('en-US') + ' ₽';
 function partSpec(cat, p) {
@@ -454,7 +454,7 @@ class Hud {
     const N = NODES[G.loc], R = G.roadOf(), J = cfg.job;
     this.$('gLoc').textContent = R ? G.whereText() : 'at ' + N.name + (N.garage ? ' · workshop' : '');
     this.$('gGo').textContent = owned ? (R ? 'On the road ▶' : J ? (G.loc === J.to ? 'Unload here ▶' : 'Your load ▶') : 'Jobs here ▶') : 'Buy · ' + money(d.price || 0);
-    this.$('gCash').textContent = money(G.cash);
+    this.$('gCash').textContent = money(G.cash) + (G.data.loan > 0 ? ' · owes ' + money(G.data.loan) : '');
     const box = this.$('gCards');
     if (!owned) {
       this.$('gTabs').innerHTML = '';
@@ -471,8 +471,9 @@ class Hud {
     else if (G.gTab === 'body') box.innerHTML = (id === 'skt' ? '<div class="gnote">These work on the drawn 143H; only the beacon is drawn on it so far.</div>' : '') + Object.keys(CABS).filter(pid => CABS[pid].trucks.includes(id)).map(pid => this.partCard('cab', pid, cfg)).join('') + (Object.keys(ADDONS).filter(k => ADDONS[k].trucks.includes(id)).map(k => this.addonCard(k, cfg)).join('') || '<div class="gnote">No add-ons for this truck.</div>');
     else if (G.gTab === 'service') box.innerHTML = this.serviceHTML(cfg);
     else if (G.gTab === 'fuel') box.innerHTML = this.fuelHTML();
+    else if (G.gTab === 'bank') box.innerHTML = this.bankHTML();
     else box.innerHTML = TAB_CATS[G.gTab].map(cat => Object.keys(PARTCATS[cat]).filter(pid => PARTCATS[cat][pid].trucks.includes(id)).map(pid => this.partCard(cat, pid, cfg)).join('')).join('');
-    if (!G.workshopHere() && G.gTab !== 'paint' && G.gTab !== 'fuel') box.innerHTML = '<div class="gnote">' + (R ? 'Out on the road: no workshop here.' : 'No workshop at ' + N.name + '.') + ' Parts and repairs at Camp No 7 or Sawmill No 3.</div>' + box.innerHTML;
+    if (!G.workshopHere() && G.gTab !== 'paint' && G.gTab !== 'fuel' && G.gTab !== 'bank') box.innerHTML = '<div class="gnote">' + (R ? 'Out on the road: no workshop here.' : 'No workshop at ' + N.name + '.') + ' Parts and repairs at Camp No 7 or Sawmill No 3.</div>' + box.innerHTML;
     if (G.gTab === 'fuel') this.wireFuel(box);
     box.querySelectorAll('[data-act]').forEach(b => b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); G.garageAct(b.dataset.act, b.dataset.cat, b.dataset.id); }));
     box.querySelectorAll('.gcard[data-cat]').forEach(b => b.addEventListener('pointerdown', e => { if (e.target.closest('[data-act]')) return; G.gSel = [b.dataset.cat, b.dataset.id]; this.renderStats(); box.querySelectorAll('.gcard').forEach(x => x.classList.toggle('sel', x === b)); }));
@@ -523,6 +524,24 @@ class Hud {
     const all = WEARCATS.reduce((s, c) => s + G.repairCost(c), 0) + bcost;
     if (all > 0) rows.push('<div class="gcard"><span class="cat">SERVICE</span><b>Full service</b><p>Repair everything in one go.</p><span class="ft"><span class="tag"></span><button class="sbtn" data-act="repairall"' + (G.cash < all ? ' disabled' : '') + '>Repair all · ' + money(all) + '</button></span></div>');
     return rows.join('');
+  }
+  // ---------- bank: borrow against future hauls, interest ticks after every finished drive ----------
+  bankHTML() {
+    const G = this.G, owes = G.data.loan, cash = Math.floor(G.cash);
+    const status = '<div class="gcard"><span class="cat">DISTRICT SAVINGS DESK</span><b>' + (owes > 0 ? 'You owe ' + money(owes) : 'No debt') + '</b>' +
+      '<p>' + (owes > 0 ? 'Interest +' + Math.round((LOAN_GROWTH - 1) * 100) + '% after every finished drive — about ' + money(Math.max(1, Math.round(owes * (LOAN_GROWTH - 1)))) + ' next time.' : 'Cash wired wherever you park. Interest +' + Math.round((LOAN_GROWTH - 1) * 100) + '% per finished drive.') + '</p>' +
+      '<span class="ft"><span class="tag">' + money(G.cash) + ' in hand</span></span></div>';
+    const take = [LOAN_STEP, LOAN_MAX].filter((a, i, arr) => arr.indexOf(a) === i).map(a =>
+      '<button class="sbtn" data-act="loan" data-id="' + a + '"' + (owes + a > LOAN_MAX ? ' disabled' : '') + '>Borrow · ' + money(a) + '</button>').join('');
+    const borrow = '<div class="gcard"><span class="cat">BORROW</span><b>Draw a loan</b><p>At most ' + money(LOAN_MAX) + ' on the books. No workshop needed.</p><span class="ft">' + take + '</span></div>';
+    let repay = '';
+    if (owes > 0) {
+      const back = [LOAN_STEP, LOAN_MAX].map(a =>
+        '<button class="sbtn gr" data-act="repay" data-id="' + a + '"' + (cash < 1 ? ' disabled' : '') + '>Repay · ' + money(Math.min(a, owes, Math.max(0, cash))) + '</button>').join('') +
+        '<button class="sbtn gr" data-act="repay" data-id="all"' + (cash < 1 ? ' disabled' : '') + '>Repay all · ' + money(Math.min(owes, Math.max(0, cash))) + '</button>';
+      repay = '<div class="gcard"><span class="cat">PAY IT BACK</span><b>Settle the debt</b><p>Every rouble back stops its interest.</p><span class="ft">' + back + '</span></div>';
+    }
+    return status + borrow + repay;
   }
   // ---------- fuel: as much as you like, wherever it is sold; a fuel truck comes out where it isn't ----------
   fuelHTML() {

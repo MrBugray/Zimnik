@@ -110,6 +110,7 @@ class Game {
       if (t.job) { const n = capOf(id, t.job.cargo, t.parts); t.job.kg = unitKg(id, t.job.cargo, t.parts); t.job.units = Math.min(t.job.units, n); t.job.left = Math.min(t.job.left, n); }
     }
     if (typeof D.clock !== 'number' || !(D.clock >= 0)) D.clock = 0;
+    if (typeof D.loan !== 'number' || !(D.loan >= 0)) D.loan = 0; else D.loan = Math.min(LOAN_MAX, Math.round(D.loan));
     this.data = D; this.cash = D.cash || 0;
   }
   saveNow() {
@@ -405,6 +406,22 @@ class Game {
   garageAct(act, cat, id) {
     const c = this.cfg(); let rebuild = false;
     if (act === 'buytruck') { this.buyTruck(); return; }
+    if (act === 'loan') {   // the savings desk wires the money wherever you are parked
+      const amt = +id, D = this.data;
+      if (D.loan + amt > LOAN_MAX) return;
+      D.loan += amt; this.cash += amt; this.sound.sfx('good');
+      this.hud.toast('Loan drawn · +' + money(amt) + ' · you owe ' + money(D.loan), 'good', 3.4);
+      this.saveNow(); this.hud.renderGarage(); return;
+    }
+    if (act === 'repay') {
+      const D = this.data;
+      let amt = id === 'all' ? D.loan : Math.min(D.loan, +id);
+      amt = Math.min(amt, Math.floor(this.cash));
+      if (amt <= 0) return;
+      D.loan -= amt; this.cash -= amt; this.sound.sfx('good');
+      this.hud.toast(D.loan > 0 ? 'Paid back ' + money(amt) + ' · still owe ' + money(D.loan) : 'Debt clear · −' + money(amt), 'good', 3.2);
+      this.saveNow(); this.hud.renderGarage(); return;
+    }
     if (!this.ownsTruck(this.gid)) return;
     if (act !== 'paint' && act !== 'num' && act !== 'wash' && !this.workshopHere()) { this.hud.toast('No workshop here. Parts and repairs at Camp No 7 or Sawmill No 3', 'warn', 3); return; }
     if (act === 'buy') { const p = PARTCATS[cat][id]; if (this.cash < p.price) return; this.cash -= p.price; c.owned[cat + ':' + id] = 1; c.pcond[cat + ':' + id] = 1; c.parts[cat] = id; if (cat === 'cab') this.refitJob(this.gid); rebuild = true; this.sound.sfx('good'); }
@@ -677,6 +694,8 @@ class Game {
       const bk = J.kind + ':' + (J.cargo || '') + ':' + this.legFrom + '>' + at + ':' + roads.join(',');
       const b = this.data.best[bk]; if (!b || this.runT < b) { this.data.best[bk] = this.runT; best = true; }
     }
+    let loanGrew = 0;
+    if (this.data.loan > 0) { loanGrew = Math.max(1, Math.round(this.data.loan * (LOAN_GROWTH - 1))); this.data.loan = Math.min(LOAN_MAX, this.data.loan + loanGrew); }
     this.econ.nextDay();
     this.saveNow();
     this.state = 'results';
@@ -695,6 +714,7 @@ class Game {
     else if (J.kind === 'haul' && cfg.job) rows.push([C.name + ' aboard', J.left + ' / ' + J.units + ' ' + C.units]);
     else rows.push(['Salvage found', FINDS.filter(f => this.data.found[f.id]).length + ' / ' + FINDS.length]);
     rows.push(['Damage', Math.round(tr.damage) + '%'], ['Fuel', 'used ' + Math.round(tr.fuelUsed) + ' L · ' + Math.round(cfg.fuel) + ' L left'], ['Truck now', this.whereText()]);
+    if (this.data.loan > 0) rows.push(['Loan', money(this.data.loan) + ' owed' + (loanGrew ? ' · interest +' + money(loanGrew) : '')]);
     this.hud.showResults({ title, note: note.trim(), rows, pay, total, wear: wl.length ? 'Wear this run: ' + wl.join(', ') + '. Repair it in a workshop.' : '', ok });
     if (ok && (atDest || rec)) this.sound.sfx('good');
   }

@@ -31,6 +31,9 @@ const ECON = {
 const WEATHER_PAY = { clear: 1, overcast: 1.05, snow: 1.2, blizzard: 1.6, fog: 1.25, thaw: 1.3 };
 const TIME_PAY = { morning: 1, noon: 1, dusk: 1.1, night: 1.2 };
 const RESCUE_BASE = 2600, TOW_BASE = 1400;
+// The district savings desk: borrow against future hauls. The debt grows by LOAN_GROWTH every drive you finish
+// (the same beat the economy's day counter ticks on), up to LOAN_MAX outstanding at any time.
+const LOAN_STEP = 5000, LOAN_MAX = 10000, LOAN_GROWTH = 1.04;
 // Fuel: what a litre costs at each pump, petrol ('gas') and diesel. The depot and the railhead are cheapest, villages
 // sell from jerrycans at a premium, the mine, pulp mill and cutting keep only diesel for their machines, and the
 // gravel pit has none. Where fuel is trucked in (the places that take fuel or drums), the price rises as their stock

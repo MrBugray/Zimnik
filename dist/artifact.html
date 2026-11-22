@@ -190,7 +190,7 @@ button{font-family:inherit;color:inherit;border:0;padding:0;margin:0;background:
 .job .dem{float:right;clear:right;font-size:calc(var(--u)*2.9);font-weight:700;color:#7a4a1c;margin-top:calc(var(--u)*.3)}
 .jh{font-size:calc(var(--u)*3.6);font-weight:700;color:#d8cfbd;margin:calc(var(--u)*1.6) 0 calc(var(--u)*.4);letter-spacing:.03em}
 #gLoc{font-size:calc(var(--u)*3.6);background:linear-gradient(180deg,#4d4a43,#34312c);color:#f3ead7;flex:0 1 auto;min-width:calc(var(--u)*16);max-width:calc(var(--u)*62);display:block;text-align:center;line-height:calc(var(--u)*5.9);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#gCash{flex:0 0 auto;max-width:calc(var(--u)*30);overflow:hidden;text-overflow:ellipsis}
+#gCash{flex:0 0 auto;max-width:calc(var(--u)*46);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #gGo{flex:0 0 auto;min-width:calc(var(--u)*16);max-width:calc(var(--u)*54);display:inline-block;text-align:center;line-height:calc(var(--u)*7.8);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .gtab.low{color:#8a2418}.gtab.low:not(.on){background:linear-gradient(180deg,#c7a08f,#9a7466)}
 .gcard.fuel{width:calc(var(--u)*68)}.gcard.near{width:calc(var(--u)*50)}
@@ -1559,6 +1559,9 @@ const ECON = {
 const WEATHER_PAY = { clear: 1, overcast: 1.05, snow: 1.2, blizzard: 1.6, fog: 1.25, thaw: 1.3 };
 const TIME_PAY = { morning: 1, noon: 1, dusk: 1.1, night: 1.2 };
 const RESCUE_BASE = 2600, TOW_BASE = 1400;
+// The district savings desk: borrow against future hauls. The debt grows by LOAN_GROWTH every drive you finish
+// (the same beat the economy's day counter ticks on), up to LOAN_MAX outstanding at any time.
+const LOAN_STEP = 5000, LOAN_MAX = 10000, LOAN_GROWTH = 1.04;
 // Fuel: what a litre costs at each pump, petrol ('gas') and diesel. The depot and the railhead are cheapest, villages
 // sell from jerrycans at a premium, the mine, pulp mill and cutting keep only diesel for their machines, and the
 // gravel pit has none. Where fuel is trucked in (the places that take fuel or drums), the price rises as their stock
@@ -6173,7 +6176,7 @@ class Sound {
 
 // ---- 60_hud.js
 // ===== HUD: controls, gauges, garage UI, overlays =====
-const TABS = [['paint', 'Paint'], ['body', 'Body'], ['engine', 'Engine'], ['gearbox', 'Gearbox'], ['wheels', 'Wheels'], ['chassis', 'Chassis'], ['service', 'Service'], ['fuel', 'Fuel']];
+const TABS = [['paint', 'Paint'], ['body', 'Body'], ['engine', 'Engine'], ['gearbox', 'Gearbox'], ['wheels', 'Wheels'], ['chassis', 'Chassis'], ['service', 'Service'], ['fuel', 'Fuel'], ['bank', 'Bank']];
 const TAB_CATS = { engine: ['engine', 'tune', 'radiator'], gearbox: ['gearbox'], wheels: ['tires', 'lift', 'ctis'], chassis: ['springs', 'brakes', 'tank'] };
 const money = v => Math.round(v).toLocaleString('en-US') + ' ₽';
 function partSpec(cat, p) {
@@ -6628,7 +6631,7 @@ class Hud {
     const N = NODES[G.loc], R = G.roadOf(), J = cfg.job;
     this.$('gLoc').textContent = R ? G.whereText() : 'at ' + N.name + (N.garage ? ' · workshop' : '');
     this.$('gGo').textContent = owned ? (R ? 'On the road ▶' : J ? (G.loc === J.to ? 'Unload here ▶' : 'Your load ▶') : 'Jobs here ▶') : 'Buy · ' + money(d.price || 0);
-    this.$('gCash').textContent = money(G.cash);
+    this.$('gCash').textContent = money(G.cash) + (G.data.loan > 0 ? ' · owes ' + money(G.data.loan) : '');
     const box = this.$('gCards');
     if (!owned) {
       this.$('gTabs').innerHTML = '';
@@ -6645,8 +6648,9 @@ class Hud {
     else if (G.gTab === 'body') box.innerHTML = (id === 'skt' ? '<div class="gnote">These work on the drawn 143H; only the beacon is drawn on it so far.</div>' : '') + Object.keys(CABS).filter(pid => CABS[pid].trucks.includes(id)).map(pid => this.partCard('cab', pid, cfg)).join('') + (Object.keys(ADDONS).filter(k => ADDONS[k].trucks.includes(id)).map(k => this.addonCard(k, cfg)).join('') || '<div class="gnote">No add-ons for this truck.</div>');
     else if (G.gTab === 'service') box.innerHTML = this.serviceHTML(cfg);
     else if (G.gTab === 'fuel') box.innerHTML = this.fuelHTML();
+    else if (G.gTab === 'bank') box.innerHTML = this.bankHTML();
     else box.innerHTML = TAB_CATS[G.gTab].map(cat => Object.keys(PARTCATS[cat]).filter(pid => PARTCATS[cat][pid].trucks.includes(id)).map(pid => this.partCard(cat, pid, cfg)).join('')).join('');
-    if (!G.workshopHere() && G.gTab !== 'paint' && G.gTab !== 'fuel') box.innerHTML = '<div class="gnote">' + (R ? 'Out on the road: no workshop here.' : 'No workshop at ' + N.name + '.') + ' Parts and repairs at Camp No 7 or Sawmill No 3.</div>' + box.innerHTML;
+    if (!G.workshopHere() && G.gTab !== 'paint' && G.gTab !== 'fuel' && G.gTab !== 'bank') box.innerHTML = '<div class="gnote">' + (R ? 'Out on the road: no workshop here.' : 'No workshop at ' + N.name + '.') + ' Parts and repairs at Camp No 7 or Sawmill No 3.</div>' + box.innerHTML;
     if (G.gTab === 'fuel') this.wireFuel(box);
     box.querySelectorAll('[data-act]').forEach(b => b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); G.garageAct(b.dataset.act, b.dataset.cat, b.dataset.id); }));
     box.querySelectorAll('.gcard[data-cat]').forEach(b => b.addEventListener('pointerdown', e => { if (e.target.closest('[data-act]')) return; G.gSel = [b.dataset.cat, b.dataset.id]; this.renderStats(); box.querySelectorAll('.gcard').forEach(x => x.classList.toggle('sel', x === b)); }));
@@ -6697,6 +6701,24 @@ class Hud {
     const all = WEARCATS.reduce((s, c) => s + G.repairCost(c), 0) + bcost;
     if (all > 0) rows.push('<div class="gcard"><span class="cat">SERVICE</span><b>Full service</b><p>Repair everything in one go.</p><span class="ft"><span class="tag"></span><button class="sbtn" data-act="repairall"' + (G.cash < all ? ' disabled' : '') + '>Repair all · ' + money(all) + '</button></span></div>');
     return rows.join('');
+  }
+  // ---------- bank: borrow against future hauls, interest ticks after every finished drive ----------
+  bankHTML() {
+    const G = this.G, owes = G.data.loan, cash = Math.floor(G.cash);
+    const status = '<div class="gcard"><span class="cat">DISTRICT SAVINGS DESK</span><b>' + (owes > 0 ? 'You owe ' + money(owes) : 'No debt') + '</b>' +
+      '<p>' + (owes > 0 ? 'Interest +' + Math.round((LOAN_GROWTH - 1) * 100) + '% after every finished drive — about ' + money(Math.max(1, Math.round(owes * (LOAN_GROWTH - 1)))) + ' next time.' : 'Cash wired wherever you park. Interest +' + Math.round((LOAN_GROWTH - 1) * 100) + '% per finished drive.') + '</p>' +
+      '<span class="ft"><span class="tag">' + money(G.cash) + ' in hand</span></span></div>';
+    const take = [LOAN_STEP, LOAN_MAX].filter((a, i, arr) => arr.indexOf(a) === i).map(a =>
+      '<button class="sbtn" data-act="loan" data-id="' + a + '"' + (owes + a > LOAN_MAX ? ' disabled' : '') + '>Borrow · ' + money(a) + '</button>').join('');
+    const borrow = '<div class="gcard"><span class="cat">BORROW</span><b>Draw a loan</b><p>At most ' + money(LOAN_MAX) + ' on the books. No workshop needed.</p><span class="ft">' + take + '</span></div>';
+    let repay = '';
+    if (owes > 0) {
+      const back = [LOAN_STEP, LOAN_MAX].map(a =>
+        '<button class="sbtn gr" data-act="repay" data-id="' + a + '"' + (cash < 1 ? ' disabled' : '') + '>Repay · ' + money(Math.min(a, owes, Math.max(0, cash))) + '</button>').join('') +
+        '<button class="sbtn gr" data-act="repay" data-id="all"' + (cash < 1 ? ' disabled' : '') + '>Repay all · ' + money(Math.min(owes, Math.max(0, cash))) + '</button>';
+      repay = '<div class="gcard"><span class="cat">PAY IT BACK</span><b>Settle the debt</b><p>Every rouble back stops its interest.</p><span class="ft">' + back + '</span></div>';
+    }
+    return status + borrow + repay;
   }
   // ---------- fuel: as much as you like, wherever it is sold; a fuel truck comes out where it isn't ----------
   fuelHTML() {
@@ -7246,6 +7268,7 @@ class Game {
       if (t.job) { const n = capOf(id, t.job.cargo, t.parts); t.job.kg = unitKg(id, t.job.cargo, t.parts); t.job.units = Math.min(t.job.units, n); t.job.left = Math.min(t.job.left, n); }
     }
     if (typeof D.clock !== 'number' || !(D.clock >= 0)) D.clock = 0;
+    if (typeof D.loan !== 'number' || !(D.loan >= 0)) D.loan = 0; else D.loan = Math.min(LOAN_MAX, Math.round(D.loan));
     this.data = D; this.cash = D.cash || 0;
   }
   saveNow() {
@@ -7541,6 +7564,22 @@ class Game {
   garageAct(act, cat, id) {
     const c = this.cfg(); let rebuild = false;
     if (act === 'buytruck') { this.buyTruck(); return; }
+    if (act === 'loan') {   // the savings desk wires the money wherever you are parked
+      const amt = +id, D = this.data;
+      if (D.loan + amt > LOAN_MAX) return;
+      D.loan += amt; this.cash += amt; this.sound.sfx('good');
+      this.hud.toast('Loan drawn · +' + money(amt) + ' · you owe ' + money(D.loan), 'good', 3.4);
+      this.saveNow(); this.hud.renderGarage(); return;
+    }
+    if (act === 'repay') {
+      const D = this.data;
+      let amt = id === 'all' ? D.loan : Math.min(D.loan, +id);
+      amt = Math.min(amt, Math.floor(this.cash));
+      if (amt <= 0) return;
+      D.loan -= amt; this.cash -= amt; this.sound.sfx('good');
+      this.hud.toast(D.loan > 0 ? 'Paid back ' + money(amt) + ' · still owe ' + money(D.loan) : 'Debt clear · −' + money(amt), 'good', 3.2);
+      this.saveNow(); this.hud.renderGarage(); return;
+    }
     if (!this.ownsTruck(this.gid)) return;
     if (act !== 'paint' && act !== 'num' && act !== 'wash' && !this.workshopHere()) { this.hud.toast('No workshop here. Parts and repairs at Camp No 7 or Sawmill No 3', 'warn', 3); return; }
     if (act === 'buy') { const p = PARTCATS[cat][id]; if (this.cash < p.price) return; this.cash -= p.price; c.owned[cat + ':' + id] = 1; c.pcond[cat + ':' + id] = 1; c.parts[cat] = id; if (cat === 'cab') this.refitJob(this.gid); rebuild = true; this.sound.sfx('good'); }
@@ -7813,6 +7852,8 @@ class Game {
       const bk = J.kind + ':' + (J.cargo || '') + ':' + this.legFrom + '>' + at + ':' + roads.join(',');
       const b = this.data.best[bk]; if (!b || this.runT < b) { this.data.best[bk] = this.runT; best = true; }
     }
+    let loanGrew = 0;
+    if (this.data.loan > 0) { loanGrew = Math.max(1, Math.round(this.data.loan * (LOAN_GROWTH - 1))); this.data.loan = Math.min(LOAN_MAX, this.data.loan + loanGrew); }
     this.econ.nextDay();
     this.saveNow();
     this.state = 'results';
@@ -7831,6 +7872,7 @@ class Game {
     else if (J.kind === 'haul' && cfg.job) rows.push([C.name + ' aboard', J.left + ' / ' + J.units + ' ' + C.units]);
     else rows.push(['Salvage found', FINDS.filter(f => this.data.found[f.id]).length + ' / ' + FINDS.length]);
     rows.push(['Damage', Math.round(tr.damage) + '%'], ['Fuel', 'used ' + Math.round(tr.fuelUsed) + ' L · ' + Math.round(cfg.fuel) + ' L left'], ['Truck now', this.whereText()]);
+    if (this.data.loan > 0) rows.push(['Loan', money(this.data.loan) + ' owed' + (loanGrew ? ' · interest +' + money(loanGrew) : '')]);
     this.hud.showResults({ title, note: note.trim(), rows, pay, total, wear: wl.length ? 'Wear this run: ' + wl.join(', ') + '. Repair it in a workshop.' : '', ok });
     if (ok && (atDest || rec)) this.sound.sfx('good');
   }
