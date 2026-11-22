@@ -9,6 +9,7 @@ Equivalent Java:
       WebView v = new WebView(this); web = v;
       WebSettings s = v.getSettings();
       s.setJavaScriptEnabled(true); s.setDomStorageEnabled(true); s.setMediaPlaybackRequiresUserGesture(false);
+      s.setTextZoom(100);   // system font size must not inflate the game's fixed-unit layout
       v.setBackgroundColor(0xff000000); setContentView(v);
       v.setSystemUiVisibility(IMMERSIVE_STICKY|FULLSCREEN|HIDE_NAV|LAYOUT_*);
       v.loadUrl("file:///android_asset/index.html");
@@ -56,6 +57,7 @@ METHODS = [
     (WS, 'setDomStorageEnabled', 'V', ('Z',)),
     (WS, 'setJavaScriptEnabled', 'V', ('Z',)),
     (WS, 'setMediaPlaybackRequiresUserGesture', 'V', ('Z',)),
+    (WS, 'setTextZoom', 'V', ('I',)),
     (WV, '<init>', 'V', (CTX,)),
     (WV, 'evaluateJavascript', 'V', (STR, VCB)),
     (WV, 'getSettings', WS, ()),
@@ -137,6 +139,7 @@ def build(path=None):
     oc += inv(0x6e, M(WS, 'setDomStorageEnabled'), [1, 2])
     oc += const4(2, 0)
     oc += inv(0x6e, M(WS, 'setMediaPlaybackRequiresUserGesture'), [1, 2])
+    oc += const16(2, 100); oc += inv(0x6e, M(WS, 'setTextZoom'), [1, 2])
     oc += const32(1, 0xff000000); oc += inv(0x6e, M(WV, 'setBackgroundColor'), [0, 1])
     oc += inv(0x6e, M(ACT, 'setContentView'), [4, 0])
     oc += const16(1, UI); oc += inv(0x6e, M(VIEW, 'setSystemUiVisibility'), [0, 1])

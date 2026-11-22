@@ -6,6 +6,7 @@ const REPAIR_BASE = { engine: 6000, gearbox: 3600, tires: 2200, springs: 1600, b
 const H_STEP = 1 / 120;
 const FORK_BRAKE = { throttle: 0, brake: 1 };   // standing on the brake while the junction card waits
 const TOWBACK = 400;
+const WRECK_TOW = 5000;   // flat rate when the truck dies at 100% damage: dragged to the nearest workshop
 
 class Game {
   constructor() {
@@ -118,7 +119,7 @@ class Game {
   secret(k) { return !!this.data.secrets[k]; }
   // wipe the save and boot fresh
   newGame() { try { localStorage.removeItem(SAVE_KEY); } catch (e) {} location.reload(); }
-  get truck() { return this.sim.truck; }
+  get truck() { return (this.scene() === 'garage' ? this.gsim : this.sim).truck; }
   get loc() { return this.cfg().loc; }
   cfg(id) { return this.data.trucks[id || this.gid]; }
   addons() { return this.cfg().addons; }
@@ -174,8 +175,9 @@ class Game {
     const p = this.econ.pay(j.cargo, n * unitKg(this.gid, j.cargo, pp) / 1000, j.dist / 1000, j.dem, m);
     return p.base + p.perT * n * unitKg(this.gid, j.cargo, pp) / 1000;
   }
-  // ---------- the hub: the truck where it is parked (workshop inside, or out in the yard) ----------
-  scene() { return (this.state === 'hub' || this.state === 'jobs' || this.state === 'title') && this.hubGarage ? 'garage' : 'world'; }
+  // ---------- the hub: car and job selection always use the workshop backdrop (a cached bitmap, kind to the
+  // frame rate wherever the truck is parked); the flag still says whether THIS place has a real workshop ----------
+  scene() { return (this.state === 'hub' || this.state === 'jobs' || this.state === 'title') ? 'garage' : 'world'; }
   toHub() {
     this.state = 'hub'; this.job = null; this.trip = null; this.gSel = null; this.fuelSel = null; this.stranded = null; this.strandAt = null; this.roadside = []; this.mapOpen = false;
     this.buildHub(); this.hud.show('garage'); this.hud.renderGarage(); this.saveNow();
@@ -185,53 +187,18 @@ class Game {
   buildHub() {
     const R = this.roadOf();
     this.hubGarage = !R && !!NODES[this.loc].garage;
-    if (R) this.buildRoadside(R); else if (this.hubGarage) this.buildGarage(); else this.buildYard(this.loc);
-  }
-  // left out on a road: the truck where it was left, snowed on, engine off
-  buildRoadside(R) {
-    const c = new Course(1979); c.start(0);
-    const E = EDGES[R.edge], rev = R.dir < 0, r = c.appendPiece(edgePiece(R.edge), rev, { kind: 'edge', edge: R.edge, from: rev ? E.b : E.a, to: rev ? E.a : E.b });
-    c.appendPiece(tailPiece('snow'), false, null);
-    this.course = c; this.applyConditions();
-    this.sim = new Sim(c, this.env);
-    const J = this.cfg().job, tail = this.gid === 'skt' && J ? 16 : 0;
-    const tr = this.addHubTruck(clamp(r.X(R.s), r.x0 + 12 + tail, r.x1 - 12)); tr.snowBuild = 0.8;
-    for (let i = 0; i < 90; i++) this.sim.step(H_STEP, NOINPUT);
-    this.R.bg.setZones(c); this.R.wr.parts.length = 0;
-    const p = tr.chassis.getPosition(), B = ART_BOUNDS[tr.gk || this.gid], len = B[2] - B[0] + 0.98, hh = B[3] - B[1] + 0.07;
-    const ppm = Math.min(VIEW.w * 0.52 / len, VIEW.h * 0.42 / hh);
-    this.cam.ppm = ppm; this.cam.x = p.x + (B[0] + B[2]) / 2 + 0.29 + 0.13 * VIEW.w / ppm; this.cam.y = this.course.hAt(p.x); this.camRefY = this.cam.y; this.vSm = 0;
+    this.buildGarage();
   }
   buildGarage() {
     const c = buildFlatCourse();
     this.gsim = new Sim(c, { temp: 12, wind: 0, fresh: 0, extraSnow: 0, part: 0 });
-    const gt = this.gsim.addTruck(TRUCKS[this.gid], this.cfg(), 0, { player: true });
+    const cfg = this.cfg(), J = cfg.job, cargo = J && J.kind === 'haul' && this.gid !== 'skt' ? J.cargo : null;
+    const gt = this.gsim.addTruck(TRUCKS[this.gid], cfg, 0, { player: true, cargo, state: { cargoLeft: J ? J.left : 0, fuel: cfg.fuel } });
     gt.inGarage = true; gt.snowBuild = 0; gt.lights = false; // indoors: engine quiet, snow melted off
+    gt.mode = 'M'; gt.gear = 0; gt.autoHold = true;          // parked: no creeping through the workshop while you pick a truck
     for (let i = 0; i < 120; i++) this.gsim.step(H_STEP, NOINPUT);
+    gt.chassis.setLinearVelocity(planck.Vec2(0, 0));
     this.R.wr.parts.length = 0;
-  }
-  // parked out in a yard: the real place, weather and all
-  buildYard(loc) {
-    const c = new Course(1979); c.start(0);
-    const yp = yardPiece(loc, 'start'), r = c.appendPiece(yp, true, { kind: 'yard', node: loc, role: 'start' });
-    c.appendPiece(tailPiece('snow'), false, null);
-    this.course = c; this.applyConditions();
-    this.sim = new Sim(c, this.env);
-    const tr = this.addHubTruck(r.X(yp.spawn)); tr.snowBuild = this.W.part > 0 ? 0.6 : 0.2;
-    for (let i = 0; i < 90; i++) this.sim.step(H_STEP, NOINPUT);
-    this.R.bg.setZones(c); this.R.wr.parts.length = 0;
-    // framed like the workshop: the truck left of centre, standing just above the garage panel
-    const p = tr.chassis.getPosition(), B = ART_BOUNDS[tr.gk || this.gid], len = B[2] - B[0] + 0.98, hh = B[3] - B[1] + 0.07;
-    const ppm = Math.min(VIEW.w * 0.52 / len, VIEW.h * 0.42 / hh);
-    this.cam.ppm = ppm; this.cam.x = p.x + (B[0] + B[2]) / 2 + 0.29 + 0.13 * VIEW.w / ppm; this.cam.y = this.course.hAt(p.x); this.camRefY = this.cam.y; this.vSm = 0;
-  }
-  // the truck as it stands in the hub, with whatever its job left aboard
-  addHubTruck(x) {
-    const c = this.cfg(), J = c.job, cargo = J && J.kind === 'haul' ? J.cargo : null, rig = this.gid === 'skt' && cargo ? TRAILER_FOR[cargo] : null;
-    const tr = this.sim.addTruck(TRUCKS[this.gid], c, x, { player: true, cargo: rig ? null : cargo, state: { cargoLeft: J ? J.left : 0, fuel: c.fuel } });
-    if (rig) this.sim.attachTrailer(tr, rig, cargo, { cargoLeft: J.left });
-    tr.engineOn = false; tr.lights = false;
-    return tr;
   }
   switchTruck(d) {
     const ids = Object.keys(TRUCKS); this.gid = ids[(ids.indexOf(this.gid) + d + ids.length) % ids.length];
@@ -297,6 +264,7 @@ class Game {
   unloadHere() { const J = this.cfg().job; if (!J) return; this.job = J; this.launch(true); }
   launch(inYard) {
     const J = this.job, cfg = this.cfg();
+    if (cfg.body !== undefined && cfg.body <= 0.01) { this.hud.toast('The truck is wrecked — repair it in the workshop first', 'warn', 3.2); this.toHub(); return; }
     // a recover job goes to wherever that truck is now; once it is off the road there is nothing to fetch
     if (J.kind === 'recover') { const RR = this.roadOf(J.truck); if (!RR) { this.toHub(); return; } J.edge = RR.edge; J.s = RR.s; }
     let R = cfg.road; if (R && J.to) R = Object.assign({}, R, { dir: this.roadDir(R, J.to) });
@@ -334,7 +302,7 @@ class Game {
     if (J.kind === 'tow') this.hookBroken();
     this.placeStranded(); this.placeRoadside();
     const p = tr.chassis.getPosition();
-    this.cam.x = p.x + 2.5; this.cam.y = p.y + 0.6; this.camRefY = this.cam.y; this.cam.ppm = VIEW.h / 12.5; this.vSm = 0;
+    this.cam.x = p.x; this.cam.y = p.y + 0.6; this.camRefY = this.cam.y; this.cam.ppm = VIEW.h / 12.5; this.vSm = 0;
     this.state = 'drive'; this.hud.show('drive'); this.sound.init();
     const to = J.to ? NODES[J.to].name : '';
     const dist = J.dist || (J.to ? route(T.start, J.to, null, s => this.secret(s)).d : 0), need = dist && !inYard ? this.fuelNeed(dist) : 0, tight = need && tr.fuel < need;
@@ -361,6 +329,27 @@ class Game {
   restartJob() { if (!this.job) { this.toHub(); return; } this.launch(); }
   pause() { if (this.state !== 'drive') return; this.state = 'pause'; this.hud.showPause(); }
   resume() { if (this.state !== 'pause') return; this.state = 'drive'; this.hud.show('drive'); }
+  // 100% damage out on the road: one way home — the tow truck, flat 5,000 to the nearest workshop
+  wreck() {
+    if (this.state !== 'drive') return;
+    this.state = 'pause';
+    let best = null; const sp = this.spotHere();
+    for (const id in NODES) if (NODES[id].garage) { const d = this.spotDist(sp, id); if (d < Infinity && (!best || d < best.d)) best = { node: id, d }; }
+    if (!best) for (const id in NODES) if (NODES[id].garage) { best = { node: id, d: 0 }; break; }
+    this.hud.showWreck(best.node);
+  }
+  wreckTow(node) {
+    const cfg = this.cfg(), tr = this.truck;
+    this.cash -= WRECK_TOW;                       // on tick if you are short — the tow always comes
+    this.addTime(Math.round(this.towQuote(this.spotDist(this.spotHere(), node), !!tr.semi).time));
+    this.applyWear(cfg, tr);
+    cfg.body = clamp(1 - tr.damage / 100, 0, 1);  // still a wreck: the workshop repairs it
+    cfg.fuel = clamp(tr.fuel, 0, this.tankCap());
+    cfg.road = null; cfg.loc = node;
+    this.saveNow();
+    this.toHub();
+    this.hud.toast('Towed to ' + NODES[node].name + ' — repair the truck in the workshop', 'warn', 4);
+  }
   abandon() { this.abandonJob(); }
   // the Map button on the road: the drive waits while the map is open, with a "you are here" marker
   openDriveMap() { if (this.state !== 'drive') return; this.state = 'pause'; this.openMap('drive'); }
@@ -725,10 +714,9 @@ class Game {
     IA = clamp(this[accKey] / H_STEP, 0, 1);
   }
   tick(dt) {
-    const garage = this.scene() === 'garage', hub = this.state === 'hub' || this.state === 'jobs' || this.state === 'title';
+    const garage = this.scene() === 'garage';
     if (this.state === 'drive') this.update(dt);
     else if (garage) this.stepSim(this.gsim, dt, NOINPUT, 'gacc');
-    else if (hub) this.stepSim(this.sim, dt, NOINPUT, 'acc');
     if (this.state === 'drive' || this.state === 'pause' || this.state === 'results') this.updateCamera(dt);
     if (this.timeFlow && this.state === 'drive') { this.hour = (this.hour + dt / 60) % 24; this.updateTemp(); this.syncTimeKey(); }
     // the palette moves in 15-minute steps of game time, so cached art is redrawn every few seconds, not every frame
@@ -746,10 +734,9 @@ class Game {
     this.vSm = lerp(this.vSm, v.x, 1 - Math.exp(-dt / 0.8));
     const towing = !!this.sim.tow, semi = !!tr.semi;
     const base = VIEW.h / 12.5 * (semi ? 0.7 : towing ? 0.82 : 1);
-    let tx = p.x + 2.2 + clamp(this.vSm * 0.45, -4, 6) - (semi ? 6.5 : towing ? 4.5 : 0); const ty = p.y + (semi ? 1.2 : 0.7);
-    if (this.stranded && this.stranded.ditch) { const d = p.x - this.stranded.x; if (d > -4 && d < 24) tx -= 5.5 * clamp(Math.min(d + 4, 24 - d) / 6, 0, 1); }
     const ox = this.cam.x;
-    this.cam.x += (tx - this.cam.x) * (1 - Math.exp(-dt * 3.0));
+    this.cam.x = p.x;                      // hard lock: the truck never leaves the centre of the screen
+    const ty = p.y + (semi ? 1.2 : 0.7);
     this.cam.y += (ty - this.cam.y) * (1 - Math.exp(-dt * 2.6));
     const tp = base * (1 - clamp(Math.abs(this.vSm) / 50, 0, 0.16));
     this.cam.ppm += (tp - this.cam.ppm) * (1 - Math.exp(-dt * 0.8));
@@ -788,6 +775,13 @@ class Game {
       this.hud.toast(e.msg, e.cls);
     }
     this.sim.events.length = 0;
+    // wrecked at 100% damage: the engine dies and stays dead until a workshop sees to it
+    if (tr.damage >= 100 && !tr.dead) {
+      tr.dead = true; tr.engineOn = false;
+      this.sound.sfx('thud');
+      this.hud.toast('The truck is wrecked — it will not run again', 'bad', 4);
+    }
+    if (tr.dead) { tr.engineOn = false; if (Math.abs(tr.vF) < 0.5 && this.state === 'drive') { this.wreck(); return; } }
     const x = tr.x;
     // junctions: the card comes up well before the pad; past it the truck stops and waits (above)
     const p = T.pending;
@@ -856,7 +850,7 @@ window.__z = {
   },
   // x along a road of the current drive (edge id and metres from where that road starts in this drive)
   roadX(edge, s) { const l = window.__game.course.legs.find(l => l.edge === edge); return l ? l.x0 + (s || 0) : null; },
-  teleport(x) { const G = window.__game; const t = G.sim.respawn(G.truck, x); if (G.stranded && G.sim.tow) { G.stranded.truck = G.sim.tow.b; G.stranded.semi = G.sim.tow.b.semi; } G.cam.x = x + 2; G.cam.y = G.course.hAt(x) + 2; return !!t; },
+  teleport(x) { const G = window.__game; const t = G.sim.respawn(G.truck, x); if (G.stranded && G.sim.tow) { G.stranded.truck = G.sim.tow.b; G.stranded.semi = G.sim.tow.b.semi; } G.cam.x = x; G.cam.y = G.course.hAt(x) + 2; return !!t; },
   state() { const G = window.__game, t = G.truck; return { x: t.x, v: t.vF, gear: t.gear, rpm: t.rpm, items: t.itemsOn(), dmg: t.damage, fuel: t.fuel, state: G.state, coup: t.coup, loc: G.loc }; },
 };
 window.__SPR = SPR; // test hook: sprite cache stats

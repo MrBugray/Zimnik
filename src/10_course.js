@@ -58,7 +58,7 @@ class Course {
       else f = smooth(t);
       const env = sstep(0, edge, t) * sstep(1, 1 - edge, t);
       let y = y0 + dy * f + fbm1(x / wl, seed, 3) * amp * env;
-      if (rough) y += (noise1(x / 1.9, seed + 17) * 0.7 + noise1(x / 1.1, seed + 29) * 0.3) * rough * env;
+      if (rough) y += (noise1(x / 1.9, seed + 17) * 0.6 + noise1(x / 1.1, seed + 29) * 0.28 + noise1(x / 0.55, seed + 43) * 0.12) * rough * 2.2 * env;
       if (o.bumps) for (const b of o.bumps) { const d = (x - b[0]) / b[2]; if (Math.abs(d) < 1) y += b[1] * 0.5 * (1 + Math.cos(Math.PI * d)); }
       const sf = o.surfFn ? o.surfFn(t, x) : surf;
       const sd = o.softFn ? o.softFn(t, x, sf) : SURF[sf].soft;

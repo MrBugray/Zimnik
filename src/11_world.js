@@ -60,9 +60,9 @@ const EDGES = {
       c.sec(220, -13, S_SNOW, { amp: 0.6, wl: 46, rough: 0.035 });
       c.sec(150, 0, S_SNOW, { amp: 0.5, wl: 40, rough: 0.03 });
       const M = c.marks;
-      P.rocks(70, 450, 0.55); c.add('cairn', M.summit + 6); P.block(M.summit, M.summit + 12);
+      c.add('cairn', M.summit + 6); P.block(M.summit, M.summit + 12);
       for (let x = M.summit + 20; x < M.summit + 230; x += 24) c.add('snowpole', x);
-      P.rocks(740, 1030, 0.5); P.zone(M.summit, M.summit + 230, 'sparse');
+      P.zone(M.summit, M.summit + 230, 'sparse');
     } },
   e4: { a: 'fork', b: 'icej', name: 'River road', short: 'RIVER', kind: 'river', len: 860, forest: 'taiga', way: [[760, 90], [860, -120], [1020, -330], [1190, -470], [1330, -510]],
     traits: 'Easy gravel road down to the river ice',
@@ -132,7 +132,7 @@ const EDGES = {
       c.sec(140, 12, S_GRAVEL, { shape: 'steps', n: 2, r: 0.8, amp: 0.15, wl: 22, rough: 0.04, surfFn: screeMix });
       c.sec(120, -3, S_SNOW, { amp: 0.4, wl: 30, rough: 0.035 });
       c.sec(220, 1, S_RUTS, { amp: 0.3, wl: 26, rough: 0.05, softFn: (t, x) => 0.12 + 0.08 * fbm1(x / 14, 6, 2) });
-      P.rocks(300, 480, 0.4); P.poles(10, 800, 44);
+      P.poles(10, 800, 44);
     } },
   e11: { a: 'depot', b: 'lesnoy', name: 'Western track', short: 'LESNOY', kind: 'track', len: 560, forest: 'dense', way: [[-600, -260], [-690, -110], [-740, 40], [-760, 170]],
     traits: 'Forest track · deep snow · log crossing over a creek',
@@ -191,7 +191,7 @@ const EDGES = {
       c.sec(150, -12, S_GRAVEL, { shape: 'steps', n: 2, r: 0.8, amp: 0.15, wl: 22, rough: 0.045, surfFn: screeMix });
       c.sec(420, -4, S_SNOW, { amp: 0.6, wl: 34, rough: 0.04, surfFn: (t, x) => fbm1(x / 24, 43, 2) > 0.28 ? S_DEEP : S_SNOW, softFn: deepSoft });
       for (let x = 20; x < 600; x += 26) c.add('snowpole', x);
-      P.rocks(380, 760, 0.5); c.add('hut', 300); P.block(292, 308);
+      c.add('hut', 300); P.block(292, 308);
     } },
   e17: { a: 'cut12', b: 'mill', name: 'North road', short: 'NORTH RD', kind: 'main', len: 2050, forest: 'taiga', way: [[560, 800], [900, 900], [1300, 950], [1700, 880], [2000, 700], [2150, 450], [2160, 300]],
     traits: 'Long gravel haul road round the north of the ridge · fast',
@@ -332,9 +332,8 @@ const EDGES = {
       c.sec(90, -6, S_RUTS, { shape: 'ramp', amp: 0.12, rough: 0.045 });
       c.sec(190, 9, S_SNOW, { amp: 0.5, wl: 34, rough: 0.04, surfFn: (t, x) => fbm1(x / 22, 83, 2) > 0.25 ? S_RUTS : S_SNOW });
       const M = c.marks;
-      P.rocks(80, 620, 0.5); c.add('cairn', M.hillsum + 8); P.block(M.hillsum + 2, M.hillsum + 14);
+      c.add('cairn', M.hillsum + 8); P.block(M.hillsum + 2, M.hillsum + 14);
       for (let x = M.hillsum + 16; x < M.hillsum + 190; x += 24) c.add('snowpole', x);
-      P.rocks(640, 830, 0.5);
     } },
   e30: { a: 'lesnoy', b: 'port', name: 'Ice crossing', short: 'ICE XING', kind: 'ice', len: 950, forest: 'dense', way: [[-760, 170], [-730, -60], [-650, -300], [-560, -520], [-470, -650], [-360, -660], [-240, -700], [-80, -760], [80, -790], [200, -750], [230, -690]],
     traits: 'Down through the forest, a long stretch of river ice, a steep climb out · weight limit',
@@ -356,7 +355,6 @@ const EDGES = {
       c.sec(120, -8, S_SNOW, { shape: 'ramp', amp: 0.1, wl: 20, rough: 0.035, surfFn: (t, x) => fbm1(x / 14, 91, 2) > 0.05 ? S_ICE : S_SNOW });
       c.sec(130, -10, S_GRAVEL, { shape: 'steps', n: 2, r: 0.8, amp: 0.14, rough: 0.04, surfFn: screeMix });
       c.sec(100, -2, S_SNOW, { amp: 0.3, wl: 30, rough: 0.03 });
-      P.rocks(100, 280, 0.55); P.rocks(460, 620, 0.5);
       for (let x = 260; x < 470; x += 26) c.add('snowpole', x);
     } },
 };
@@ -453,7 +451,6 @@ function buildPiece(forest, seed, fill) {
     block: (a, b) => blocks.push([a, b]),
     zone: (a, b, st) => zones.push([a, b, st]),
     poles: (a, b, gap, skip) => { for (let x = a; x < b; x += gap) { if (skip && skip.some(s => Math.abs(x - s) < 8)) continue; c.add('pole', x, { h: 6.3 }); } },
-    rocks: (a, b, p) => { for (let x = a; x < b; x += 9 + rnd() * 16) if (rnd() < p) c.add('rock', x, { r: 0.5 + rnd() * 1.2, z: 0.2 + rnd() * 0.6 }); },
     firs: (a, b, gap) => { for (let x = a; x < b; x += gap) c.add('fir', x); },
     stumps: (a, b, p) => { for (let x = a; x < b; x += 4 + rnd() * 9) if (rnd() < p) c.add('stump', x, { z: rnd() * 0.8 }); },
     fallen: (a, b, p) => { for (let x = a; x < b; x += 14 + rnd() * 30) if (rnd() < p) c.add('fallen', x, { z: 0.3 + rnd() * 0.6, len: 5 + rnd() * 4 }); },
@@ -538,7 +535,7 @@ function edgePiece(id) {
         P.y[q] -= dep * 0.5 * (1 + Math.cos(Math.PI * d));
       }
       bump(x + hw * 0.7, 0.28, dep * 0.4, false);   // the broken lip on the way out
-      P.decor.push({ t: 'hole', x, w: hw * 2, seed: (rnd() * 1e6) | 0 });
+      // no drawn scar: the dip itself, in the ground material, is what you see and feel
       hz.holes++;
     }
     // boulders on the rough roads: climb them slowly, or feel it in the suspension

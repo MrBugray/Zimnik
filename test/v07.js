@@ -25,7 +25,7 @@ const check = (name, ok, extra) => { if (!ok) fails++; console.log((ok ? 'ok   '
   // wait until the truck stands still (or give up after a while)
   const settle = async () => { for (let i = 0; i < 40; i++) { await sleep(150); if (await ev(() => Math.abs(__game.truck.vF) < 0.3)) break; } };
   await p.goto(url); await ev(() => localStorage.clear()); await p.reload(); await sleep(1200);
-  await ev(() => { const G = __game; G.cash = 50000; G.toHub(); G.R.scaleCap = 2; G.R.resize(); });
+  await ev(() => { const G = __game; G.cash = 50000; G.toHub(); G.R.scaleCap = 2; G.R.resize(); Math.random = () => 0.99; }); // 0.99: no random road events in this suite (events.js covers them)
 
   // ---------- 1) the knob: gates, reverse gears, looks ----------
   const revs = await ev(() => {
@@ -105,7 +105,7 @@ const check = (name, ok, extra) => { if (!ok) fails++; console.log((ok ? 'ok   '
   check('saved: road spot, job and clock', after.road && after.road.edge === 'e3' && after.job && after.clock === before, JSON.stringify(after));
 
   // ---------- 3) fetch it with the Bars: a recover job ----------
-  await ev(() => { const G = __game; G.cash = 50000; G.gid = 'bars'; G.cfg().loc = 'camp'; G.cfg().road = null; G.cfg().job = null; G.cfg().fuel = G.tankCap(); G.toHub(); G.openJobs(); }); await sleep(500);
+  await ev(() => { const G = __game; G.cash = 50000; G.gid = 'bars'; (G.data.ownedTrucks = G.data.ownedTrucks || {}).bars = 1; G.cfg().loc = 'camp'; G.cfg().road = null; G.cfg().job = null; G.cfg().fuel = G.tankCap(); G.toHub(); G.openJobs(); }); await sleep(500);
   const rec = await ev(() => [...document.querySelectorAll('.job[data-k^="rc:"]')].map(b => b.dataset.k + ' :: ' + b.querySelector('b').textContent));
   console.log('recover cards:', rec.join(' / '));
   check('board offers to fetch the Polaris', rec.length >= 1);
@@ -205,7 +205,8 @@ const check = (name, ok, extra) => { if (!ok) fails++; console.log((ok ? 'ok   '
     return { cur, nxt, f: G.wxF, vis: Math.round(G.W.vis), visA: __w.WEATHER[cur].vis, visB: __w.WEATHER[nxt].vis, weather: G.weather };
   });
   console.log('weather blend:', JSON.stringify(wx));
-  check('weather blends from one to the next', wx.f > 0.4 && wx.f < 0.6 && wx.vis >= Math.min(wx.visA, wx.visB) && wx.vis <= Math.max(wx.visA, wx.visB));
+  // wxF is quantized to fifths (0, .2, .4, .6 …) so the cached art is redrawn a handful of times per blend, not per frame
+  check('weather blends from one to the next', wx.f >= 0.4 && wx.f <= 0.6 && wx.vis >= Math.min(wx.visA, wx.visB) && wx.vis <= Math.max(wx.visA, wx.visB));
   await sleep(500); await shot('weather_blend');
   const wx2 = await ev(() => { const G = __game, w = G.data.wx, at0 = w.at; G.clock = w.at + 2000; G.wxStep(0); return { cur: w.cur, weather: G.weather, f: G.wxF, moved: w.at > at0 + 90 }; });
   check('and moves on with the clock', wx2.moved, JSON.stringify(wx2));
@@ -231,7 +232,9 @@ const check = (name, ok, extra) => { if (!ok) fails++; console.log((ok ? 'ok   '
   await ev(() => __game.leaveHere()); await sleep(300);
   const skLeft = await ev(() => __game.cfg('skt').road);
   await ev(() => __game.toHub()); await sleep(1200);
-  check('roadside hub has room for the trailer', await rigOk(), JSON.stringify(skLeft));
+  // the hub is always the workshop now (one cached backdrop, kind to the frame rate): the trailer is not drawn
+  // there, but the spot and the job are kept, and the trailer is back on on continue (checked below)
+  check('hub keeps the roadside spot and the job', await ev(() => { const G = __game, c = G.cfg('skt'); return G.scene() === 'garage' && !!c.road && c.road.edge === 'e2' && !!c.job; }), JSON.stringify(skLeft));
   await shot('skt_roadside_hub');
   await ev(() => __game.continueJob()); await sleep(1500);
   check('drives on from the road, trailer and all', await ev(() => __game.state === 'drive') && await rigOk());

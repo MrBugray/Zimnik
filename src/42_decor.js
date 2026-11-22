@@ -158,12 +158,6 @@ const DECOR = {
     pathPts(ctx, pts); fs(ctx, L('#77736e', fz), R.ol, 0.045);
     ctx.beginPath(); ctx.ellipse(d.x - r * 0.1, yy + r * 0.62, r * 0.6, r * 0.18, 0, 0, TAU); ctx.fillStyle = R.snow; ctx.fill();
   },
-  // a pothole in the road: a dark wet scar in the dip, slush round the rim
-  hole(ctx, d, y, L, P, c, t, lights, R) {
-    const w = (d.w || 1.6) / 2;
-    ctx.beginPath(); ctx.ellipse(d.x, y + 0.06, w * 0.92, 0.10 + w * 0.05, 0, 0, TAU); ctx.fillStyle = L('#262422'); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(d.x, y + 0.03, w * 0.6, 0.05, 0, 0, TAU); ctx.fillStyle = L('#45423d'); ctx.fill();
-  },
   cairn(ctx, d, y, L, P, c, t, lights, R) {
     for (let i = 0; i < 6; i++) { const row = i < 3 ? 0 : i < 5 ? 1 : 2, n = 3 - row, k = i - (row === 0 ? 0 : row === 1 ? 3 : 5); ctx.beginPath(); ctx.ellipse(d.x + (k - (n - 1) / 2) * 0.55, y + 0.22 + row * 0.38, 0.3, 0.22, 0, 0, TAU); fs(ctx, L('#7d7873'), R.ol, 0.035); }
     box(ctx, d.x - 0.04, y + 0.8, 0.08, 2.6, L('#5e4a39'), R, 0.03);
@@ -522,7 +516,6 @@ function decorBox(d, y, c) {
     case 'barrels': return [x - 0.6, y - 0.2, x + 2.3, y + 1.0];
     case 'lamp': return [x - 0.2, y - 0.3, x + 1.35, y + 5.3];
     case 'rock': { const r = d.r * (1 - 0.3 * z); return [x - r * 1.35, y - 0.3, x + r * 1.35, y + r]; }
-    case 'hole': { const w = (d.w || 1.6) / 2; return [x - w - 0.2, y - 0.25, x + w + 0.2, y + 0.3]; }
     case 'cairn': return [x - 0.95, y - 0.1, x + 0.7, y + 3.5];
     case 'snowpole': return [x - 0.12, y - 0.3, x + 0.12, y + 2.6];
     case 'marker': return [x - 0.1, y - 0.2, x + 0.1, y + 1.6];

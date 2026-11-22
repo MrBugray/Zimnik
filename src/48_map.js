@@ -517,10 +517,11 @@ class MapView {
       if (p) {
         const [x, y] = this.toPx(p.x, p.y);
         g.save(); g.translate(x, y);
-        g.fillStyle = 'rgba(240,173,58,0.35)'; g.beginPath(); g.arc(0, 0, u * 4.6, 0, TAU); g.fill();
-        g.fillStyle = '#f0ad3a'; g.strokeStyle = '#2a2520'; g.lineWidth = u * 0.6; g.beginPath(); g.arc(0, 0, u * 2.1, 0, TAU); g.fill(); g.stroke();
+        g.fillStyle = 'rgba(240,173,58,0.5)'; g.beginPath(); g.arc(0, 0, u * 5.6, 0, TAU); g.fill();
+        g.strokeStyle = '#fdf8ec'; g.lineWidth = u * 0.8; g.beginPath(); g.arc(0, 0, u * 4.4, 0, TAU); g.stroke();
+        g.fillStyle = '#f0ad3a'; g.strokeStyle = '#2a2520'; g.lineWidth = u * 0.7; g.beginPath(); g.arc(0, 0, u * 2.8, 0, TAU); g.fill(); g.stroke();
         const dir = h.at.edge && h.at.leg && h.at.leg.rev ? Math.PI : 0;
-        g.rotate(-p.ang + dir); g.fillStyle = '#2a2520'; g.beginPath(); g.moveTo(u * 1.3, 0); g.lineTo(-u * 0.9, u * 0.9); g.lineTo(-u * 0.5, 0); g.lineTo(-u * 0.9, -u * 0.9); g.closePath(); g.fill();
+        g.rotate(-p.ang + dir); g.fillStyle = '#2a2520'; g.beginPath(); g.moveTo(u * 1.8, 0); g.lineTo(-u * 1.2, u * 1.2); g.lineTo(-u * 0.7, 0); g.lineTo(-u * 1.2, -u * 1.2); g.closePath(); g.fill();
         g.restore();
         g.font = '700 ' + (u * 3.4).toFixed(1) + 'px "Barlow Condensed",sans-serif'; g.lineWidth = u * 0.9; g.strokeStyle = 'rgba(236,231,218,0.95)'; g.strokeText('You are here', x + u * 3.4, y + u * 3.6); g.fillStyle = '#7a4d0e'; g.fillText('You are here', x + u * 3.4, y + u * 3.6);
       }

@@ -380,6 +380,14 @@ class Hud {
     this.btn('oResume', () => G.resume()); this.btn('oMap', () => G.openMap('pause')); this.btn('oRestart', () => G.restartJob());
     this.btn('oLeave', () => G.leaveHere()); this.confirm('oTow', () => G.towToClosest()); this.confirm('oFuel', () => G.fuelHelp()); this.confirm('oAbandon', () => G.abandonJob());
   }
+  showWreck(node) {
+    const G = this.G, short = G.cash < WRECK_TOW;
+    this.ov.innerHTML = '<div class="panel" style="max-width:calc(var(--u)*116)"><h1 style="font-size:calc(var(--u)*8)">Wrecked</h1>' +
+      '<p>The ' + TRUCKS[G.gid].name + ' took 100% damage and will not run again. A tow truck can drag it to the nearest workshop, at ' + NODES[node].name + '.</p>' +
+      '<div class="row"><button class="btn amber" id="oWreck">Tow to ' + NODES[node].name + ' · −' + money(WRECK_TOW) + (short ? ' (on tick)' : '') + '</button></div></div>';
+    this.ov.hidden = false;
+    this.btn('oWreck', () => G.wreckTow(node));
+  }
   uPx() { return parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--u')) || 4; }
   // ---------- region map ----------
   showMap(here) {
@@ -498,7 +506,7 @@ class Hud {
     if (TRUCKS[this.G.gid].art && !(ART_IMG[ak] && ART_IMG[ak].src.zones)) return '<div class="pgrp"><h4>Body colour</h4>' + sw('c1', p.c1) + '</div><div class="gnote">Drawn truck: the magenta parts of the drawing take this colour.</div>';
     return '<div class="pgrp"><h4>Body colour</h4>' + sw('c1', p.c1) + '</div><div class="pgrp"><h4>Trim colour</h4>' + sw('c2', p.c2) + '</div>' +
       '<div class="pgrp"><h4>Livery</h4>' + chips('livery', LIVERIES, p.livery) + '</div><div class="pgrp"><h4>Rims</h4>' + chips('rims', RIMS, p.rims) + '</div>' +
-      '<div class="pgrp"><h4>Door number</h4><div class="num"><button class="sbtn gr" data-act="num" data-id="-1">−</button><span>' + p.num + '</span><button class="sbtn gr" data-act="num" data-id="1">+</button></div><p style="margin:0;font-size:calc(var(--u)*3.1);color:#cfc5b2">Paint and liveries are free.</p></div>';
+      '<div class="pgrp"><h4>Door number</h4><div class="num"><button class="sbtn gr" data-act="num" data-id="-1">−</button><span>' + p.num + '</span><button class="sbtn gr" data-act="num" data-id="1">+</button></div><p style="margin:0;font-size:calc(var(--u)*3.1);color:#cfc5b2;max-width:calc(var(--u)*32)">Paint and liveries are free.</p></div>';
   }
   serviceHTML(cfg) {
     const G = this.G, rows = [];
