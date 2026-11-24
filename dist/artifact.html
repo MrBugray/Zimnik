@@ -6048,7 +6048,7 @@ class MapView {
       const E = ECON[p.node], jobs = G.econ.board(p.node, G), here = Object.keys(TRUCKS).filter(t => G.data.trucks[t].loc === p.node && !G.data.trucks[t].road).map(t => TRUCKS[t].name);
       const want = Object.keys(E.needs).sort((a, b) => G.econ.demand(p.node, b) - G.econ.demand(p.node, a)).map(c => CARGO[c].name.toLowerCase() + ' (' + G.econ.demandWord(G.econ.demand(p.node, c)) + ')');
       extra += '<div class="mst"><span>Makes</span><span>' + (E.makes.length ? E.makes.map(c => CARGO[c].name).join(', ') : '—') + '</span><span>Needs</span><span>' + (want.slice(0, 3).join(', ') || '—') + '</span>' +
-        (NODES[p.node].garage ? '<span>Workshop</span><span>yes</span>' : '') + (here.length ? '<span>Parked here</span><span>' + here.join(', ') + '</span>' : '') + '</div>';
+        '<span>Workshop</span><span>' + (NODES[p.node].garage ? 'yes — parts and repairs' : 'no repairs here') + '</span>' + (here.length ? '<span>Parked here</span><span>' + here.join(', ') + '</span>' : '') + '</div>';
       if (jobs.length) extra += '<h3>' + jobs.length + ' jobs here</h3>' + jobs.slice(0, 4).map(j => { const e = G.jobEstimate(j); return '<div class="mjob"><span>' + (j.kind === 'haul' ? CARGO[j.cargo].name + ' → ' + NODES[j.to].name : j.kind === 'rescue' ? 'Rescue on the ' + EDGES[j.edge].name : 'Tow to ' + NODES[j.to].name) + '</span><em>' + (e === null ? '—' : money(e)) + '</em></div>'; }).join('');
       const onRd = !this.here && G.roadOf();
       if (onRd) { const d = G.distFrom(p.node); if (d < Infinity) extra += '<p>From where your truck stands: ' + km(d) + ' km by road.</p>'; }
@@ -6454,11 +6454,12 @@ class Hud {
     const fuel = Math.round(G.cfg().fuel), fneed = d => G.fuelNeed(d), fwarn = d => fneed(d) > fuel ? '<small class="lowf">Fuel: about ' + fneed(d) + ' L needed, ' + fuel + ' L in the tank</small>' : '';
     const card = j => {
       const est = G.jobEstimate(j), on = j.id === G.jobSel ? ' on' : '';
+      const ws = to => NODES[to].garage ? ' · workshop there' : ' · NO repairs there';
       if (j.kind === 'haul') {
         const C = CARGO[j.cargo], pp = G.cfg(id).parts, n = capOf(id, j.cargo, pp), t = n * unitKg(id, j.cargo, pp) / 1000, rig = id === 'skt' && TRAILER_FOR[j.cargo] ? TRAILERS[TRAILER_FOR[j.cargo]].name + ' · ' : '';
         const st = G.econ.stock(j.from, j.cargo), stock = st < Infinity ? ' · ' + Math.floor(st) + ' t in stock' : '';
         return '<button class="job' + on + (est === null ? ' dis' : '') + '" data-k="' + j.id + '"><em>' + (est === null ? '—' : '~' + money(est)) + '</em><b>' + C.name + ' → ' + NODES[j.to].name + '</b><i class="dem">' + G.econ.demandWord(j.dem) + '</i>' +
-          '<span>' + (n ? rig + (C.bulk ? t.toFixed(0) + ' t' : n + ' ' + (n === 1 ? C.unit : C.units) + ' · ' + t.toFixed(1) + ' t') : 'Not for the ' + TRUCKS[id].name.split(' ')[0] + ' · fits: ' + (fits(j.cargo) || 'a tractor and trailer')) + ' · ' + km(j.dist) + ' km' + (n ? ' · ≈' + fneed(j.dist) + ' L' : '') + stock + '</span>' + (C.bulk ? '<small>Bulk load in a trailer · heavy on hills and ice</small>' : C.fragile ? '<small>Fragile load · paid per ' + C.unit + ' delivered</small>' : '<small>Heavy load · paid per ' + C.unit + ' delivered</small>') + (n ? fwarn(j.dist) : '') + '</button>';
+          '<span>' + (n ? rig + (C.bulk ? t.toFixed(0) + ' t' : n + ' ' + (n === 1 ? C.unit : C.units) + ' · ' + t.toFixed(1) + ' t') : 'Not for the ' + TRUCKS[id].name.split(' ')[0] + ' · fits: ' + (fits(j.cargo) || 'a tractor and trailer')) + ' · ' + km(j.dist) + ' km' + (n ? ' · ≈' + fneed(j.dist) + ' L' : '') + stock + ws(j.to) + '</span>' + (C.bulk ? '<small>Bulk load in a trailer · heavy on hills and ice</small>' : C.fragile ? '<small>Fragile load · paid per ' + C.unit + ' delivered</small>' : '<small>Heavy load · paid per ' + C.unit + ' delivered</small>') + (n ? fwarn(j.dist) : '') + '</button>';
       }
       if (j.kind === 'recover') {
         const tc = G.data.trucks[j.truck], cj = tc.job, heavy = j.truck === 'skt' && cj ? ' · tractor and loaded trailer: heavy on the bar' : cj ? ' · loaded: ' + cj.left + ' ' + (cj.left === 1 ? CARGO[cj.cargo].unit : CARGO[cj.cargo].units) : '';
@@ -6467,7 +6468,7 @@ class Hud {
       const what = j.kind === 'rescue' ? 'Stranded truck on the ' + EDGES[j.edge].name : 'Broken truck in the yard';
       return '<button class="job' + on + '" data-k="' + j.id + '"><em>~' + money(est) + '</em><b>' + what + '</b><span>Tow it to the workshop at ' + NODES[j.to].name + ' · about ' + km(j.dist) + ' km · ≈' + fneed(j.dist) + ' L' + (G.addons().beacon ? ' · beacon +10%' : '') + '</span><small>Hook up the tow bar and bring it in. A snapped bar can be put back on.</small>' + fwarn(j.dist) + '</button>';
     };
-    const tcard = q => '<button class="job' + ('go:' + q.n === G.jobSel ? ' on' : '') + '" data-k="go:' + q.n + '"><em>' + km(q.d) + ' km</em><b>To ' + NODES[q.n].name + '</b><span>' + NODES[q.n].sub + ' · ' + G.econ.board(q.n, G).length + ' jobs there · ≈' + fneed(q.d) + ' L of fuel</span>' + fwarn(q.d) + '</button>';
+    const tcard = q => '<button class="job' + ('go:' + q.n === G.jobSel ? ' on' : '') + '" data-k="go:' + q.n + '"><em>' + km(q.d) + ' km</em><b>To ' + NODES[q.n].name + '</b><span>' + NODES[q.n].sub + ' · ' + G.econ.board(q.n, G).length + ' jobs there · ≈' + fneed(q.d) + ' L of fuel · ' + (NODES[q.n].garage ? 'workshop there' : 'no repairs there') + '</span>' + fwarn(q.d) + '</button>';
     const work = jobs.filter(j => j.kind !== 'recover'), mine = jobs.filter(j => j.kind === 'recover');
     const list = '<div class="jh">WORK FROM ' + N.name.toUpperCase() + '</div>' + (work.length ? work.map(card).join('') : '<p>Nothing to haul from here today.</p>') +
       (mine.length ? '<div class="jh">YOUR TRUCKS OUT ON THE ROADS</div>' + mine.map(card).join('') : '') +
@@ -6497,12 +6498,12 @@ class Hud {
       const C = CARGO[J.cargo], atDest = !R && cfg.loc === J.to, d = atDest ? 0 : G.distFrom(J.to);
       const aboard = J.left + ' / ' + J.units + ' ' + C.units + ' aboard';
       if (atDest) go.push({ k: 'unload', em: '~' + money(G.jobValue(J) * J.left / J.units), b: 'Unload here', span: C.name + ' for ' + N.name + ' · ' + aboard, small: 'Drive in from the gate and unload' });
-      else go.push({ k: 'go', em: km(d) + ' km', b: 'Carry on to ' + NODES[J.to].name, span: C.name + ' · ' + aboard + ' · ≈' + fneed(d) + ' L', small: R ? 'From where it stands, ' + G.whereText() : 'From ' + N.name, warn: fwarn(d) });
+      else go.push({ k: 'go', em: km(d) + ' km', b: 'Carry on to ' + NODES[J.to].name, span: C.name + ' · ' + aboard + ' · ≈' + fneed(d) + ' L' + (NODES[J.to].garage ? ' · workshop there' : ' · NO repairs there'), small: R ? 'From where it stands, ' + G.whereText() : 'From ' + N.name, warn: fwarn(d) });
       const fee = Math.round(G.jobValue(J) * ABANDON_FEE / 10) * 10;
       other.push({ k: 'abandon', em: '−' + money(fee), b: 'Abandon the job', span: 'A ' + Math.round(ABANDON_FEE * 100) + '% fee. The load goes back to ' + NODES[J.from].name + ' and the truck stays ' + (R ? 'where it is' : 'here') + ', empty' });
     } else if (R) {
       const travel = Object.keys(NODES).filter(n => NODES[n].kind === 'yard').map(n => ({ n, d: G.distFrom(n) })).filter(q => q.d < Infinity).sort((a, b) => a.d - b.d);
-      for (const q of travel.slice(0, 6)) go.push({ k: 'go:' + q.n, em: km(q.d) + ' km', b: 'Drive on to ' + NODES[q.n].name, span: NODES[q.n].sub + ' · ≈' + fneed(q.d) + ' L of fuel', warn: fwarn(q.d) });
+      for (const q of travel.slice(0, 6)) go.push({ k: 'go:' + q.n, em: km(q.d) + ' km', b: 'Drive on to ' + NODES[q.n].name, span: NODES[q.n].sub + ' · ≈' + fneed(q.d) + ' L of fuel' + (NODES[q.n].garage ? ' · workshop there' : ' · no repairs there'), warn: fwarn(q.d) });
       go.push({ k: 'free', em: '—', b: 'Free drive', span: 'Drive on from here and park in any yard you like' });
     }
     if (R) {
@@ -6659,21 +6660,21 @@ class Hud {
     this.renderStats();
   }
   partCard(cat, pid, cfg) {
-    const G = this.G, p = PARTCATS[cat][pid], st = G.partState(cat, pid);
+    const G = this.G, p = PARTCATS[cat][pid], st = G.partState(cat, pid), ws = G.workshopHere() ? '' : ' disabled';
     let act = '';
     if (st === 'fitted') act = '<span class="tag ok">Fitted ✓</span>';
-    else if (st === 'owned') act = '<span class="tag find">' + (G.isFound(cat, pid) ? 'Salvaged' : 'Owned') + '</span><button class="sbtn gr" data-act="fit" data-cat="' + cat + '" data-id="' + pid + '">Fit</button>';
+    else if (st === 'owned') act = '<span class="tag find">' + (G.isFound(cat, pid) ? 'Salvaged' : 'Owned') + '</span><button class="sbtn gr" data-act="fit" data-cat="' + cat + '" data-id="' + pid + '"' + ws + '>Fit</button>';
     else if (st === 'locked') act = '<span class="tag">Needs ' + TUNES[p.needs].name.replace('Tune ', '') + '</span>';
-    else act = '<span class="tag"></span><button class="sbtn" data-act="buy" data-cat="' + cat + '" data-id="' + pid + '"' + (G.cash < p.price ? ' disabled' : '') + '>Buy · ' + money(p.price) + '</button>';
+    else act = '<span class="tag"></span><button class="sbtn" data-act="buy" data-cat="' + cat + '" data-id="' + pid + '"' + (G.cash < p.price ? ' disabled' : ws) + '>Buy · ' + money(p.price) + '</button>';
     const sel = G.gSel && G.gSel[0] === cat && G.gSel[1] === pid ? ' sel' : '';
     return '<div class="gcard' + sel + '" data-cat="' + cat + '" data-id="' + pid + '"><span class="cat">' + CATNAME[cat].toUpperCase() + '</span><b>' + p.name + '</b><p>' + p.desc + '<br><span style="color:#2a2520;font-weight:700">' + partSpec(cat, p) + '</span></p><span class="ft">' + act + '</span></div>';
   }
   addonCard(k, cfg) {
-    const G = this.G, a = ADDONS[k], on = !!(cfg.addons && cfg.addons[k]), owned = G.ownsAddon(k);
+    const G = this.G, a = ADDONS[k], on = !!(cfg.addons && cfg.addons[k]), owned = G.ownsAddon(k), ws = G.workshopHere() ? '' : ' disabled';
     let act;
-    if (on) act = '<span class="tag ok">Fitted ✓</span><button class="sbtn gr" data-act="addon" data-id="' + k + '">Remove</button>';
-    else if (owned) act = '<span class="tag">Owned</span><button class="sbtn gr" data-act="addon" data-id="' + k + '">Fit</button>';
-    else act = '<span class="tag"></span><button class="sbtn" data-act="buyaddon" data-id="' + k + '"' + (G.cash < a.price ? ' disabled' : '') + '>Buy · ' + money(a.price) + '</button>';
+    if (on) act = '<span class="tag ok">Fitted ✓</span><button class="sbtn gr" data-act="addon" data-id="' + k + '"' + ws + '>Remove</button>';
+    else if (owned) act = '<span class="tag">Owned</span><button class="sbtn gr" data-act="addon" data-id="' + k + '"' + ws + '>Fit</button>';
+    else act = '<span class="tag"></span><button class="sbtn" data-act="buyaddon" data-id="' + k + '"' + (G.cash < a.price ? ' disabled' : ws) + '>Buy · ' + money(a.price) + '</button>';
     // an add-on that sits on another one (the loaded rack on the cage) waits until that one is owned
     if (!on && a.needs && !G.ownsAddon(a.needs)) act = '<span class="tag">Needs the ' + ADDONS[a.needs].name.toLowerCase() + '</span><button class="sbtn" disabled>' + (owned ? 'Fit' : 'Buy · ' + money(a.price)) + '</button>';
     return '<div class="gcard"><span class="cat">BODY</span><b>' + a.name + '</b><p>' + a.desc + '<br><span style="color:#2a2520;font-weight:700">+' + a.mass + ' kg</span></p><span class="ft">' + act + '</span></div>';
@@ -6689,19 +6690,21 @@ class Hud {
       '<div class="pgrp"><h4>Door number</h4><div class="num"><button class="sbtn gr" data-act="num" data-id="-1">−</button><span>' + p.num + '</span><button class="sbtn gr" data-act="num" data-id="1">+</button></div><p style="margin:0;font-size:calc(var(--u)*3.1);color:#cfc5b2;max-width:calc(var(--u)*32)">Paint and liveries are free.</p></div>';
   }
   serviceHTML(cfg) {
-    const G = this.G, rows = [];
+    const G = this.G, rows = [], ws = G.workshopHere();
+    const rdis = cost => (ws && G.cash >= cost ? '' : ' disabled');
     const bar = c => '<div class="cond"><i class="' + (c < 0.35 ? 'b' : c < 0.7 ? 'w' : '') + '" style="width:' + Math.round(c * 100) + '%"></i></div>';
     const eff = { engine: c => 'Power −' + Math.round(28 * (1 - c)) + '%', gearbox: c => c < 0.45 ? 'Slow shifts, misses gears' : 'Shifts ' + Math.round(80 * (1 - c)) + '% slower', tires: c => 'Grip −' + Math.round(14 * (1 - c)) + '%' + (c < 0.25 ? ', punctures' : ''), springs: c => 'Damping −' + Math.round(35 * (1 - c)) + '%' };
     for (const cat of WEARCATS) {
       const pid = cfg.parts[cat], c = G.partCond(cat), cost = G.repairCost(cat);
-      rows.push('<div class="gcard"><span class="cat">' + CATNAME[cat].toUpperCase() + '</span><b>' + PARTCATS[cat][pid].name + '</b>' + bar(c) + '<p>' + Math.round(c * 100) + '% · ' + eff[cat](c) + '</p><span class="ft"><span class="tag"></span>' + (cost > 0 ? '<button class="sbtn" data-act="repair" data-cat="' + cat + '"' + (G.cash < cost ? ' disabled' : '') + '>Repair · ' + money(cost) + '</button>' : '<span class="tag ok">Like new</span>') + '</span></div>');
+      rows.push('<div class="gcard"><span class="cat">' + CATNAME[cat].toUpperCase() + '</span><b>' + PARTCATS[cat][pid].name + '</b>' + bar(c) + '<p>' + Math.round(c * 100) + '% · ' + eff[cat](c) + '</p><span class="ft"><span class="tag"></span>' + (cost > 0 ? '<button class="sbtn" data-act="repair" data-cat="' + cat + '"' + rdis(cost) + '>Repair · ' + money(cost) + '</button>' : '<span class="tag ok">Like new</span>') + '</span></div>');
     }
     const bc = cfg.body === undefined ? 1 : cfg.body, bcost = G.repairCost('body');
-    rows.push('<div class="gcard"><span class="cat">BODY</span><b>Cab and frame</b>' + bar(bc) + '<p>' + Math.round(bc * 100) + '% · ' + (bc < 0.5 ? 'Rusty and bent' : 'Dents and scrapes') + '</p><span class="ft"><span class="tag"></span>' + (bcost > 0 ? '<button class="sbtn" data-act="repair" data-cat="body"' + (G.cash < bcost ? ' disabled' : '') + '>Repair · ' + money(bcost) + '</button>' : '<span class="tag ok">Like new</span>') + '</span></div>');
+    rows.push('<div class="gcard"><span class="cat">BODY</span><b>Cab and frame</b>' + bar(bc) + '<p>' + Math.round(bc * 100) + '% · ' + (bc < 0.5 ? 'Rusty and bent' : 'Dents and scrapes') + '</p><span class="ft"><span class="tag"></span>' + (bcost > 0 ? '<button class="sbtn" data-act="repair" data-cat="body"' + rdis(bcost) + '>Repair · ' + money(bcost) + '</button>' : '<span class="tag ok">Like new</span>') + '</span></div>');
     const dirt = cfg.dirt || 0;
     rows.push('<div class="gcard"><span class="cat">WASH</span><b>Pressure wash</b>' + bar(1 - dirt) + '<p>' + (dirt > 0.05 ? 'Mud and slush ' + Math.round(dirt * 100) + '%' : 'Clean') + '</p><span class="ft"><span class="tag"></span>' + (dirt > 0.05 ? '<button class="sbtn gr" data-act="wash">Wash · ' + money(60) + '</button>' : '<span class="tag ok">Clean</span>') + '</span></div>');
     const all = WEARCATS.reduce((s, c) => s + G.repairCost(c), 0) + bcost;
-    if (all > 0) rows.push('<div class="gcard"><span class="cat">SERVICE</span><b>Full service</b><p>Repair everything in one go.</p><span class="ft"><span class="tag"></span><button class="sbtn" data-act="repairall"' + (G.cash < all ? ' disabled' : '') + '>Repair all · ' + money(all) + '</button></span></div>');
+    if (all > 0) rows.push('<div class="gcard"><span class="cat">SERVICE</span><b>Full service</b><p>Repair everything in one go.</p><span class="ft"><span class="tag"></span><button class="sbtn" data-act="repairall"' + rdis(all) + '>Repair all · ' + money(all) + '</button></span></div>');
+    if (!ws && all > 0) rows.push('<div class="gcard"><span class="cat">REPAIRS</span><b>No workshop here</b><p>Only the wash works out here. Parts and repairs at Lespromkhoz No 7 or Sawmill No 3.</p><span class="ft"><span class="tag"></span></span></div>');
     return rows.join('');
   }
   // ---------- bank: borrow against future hauls, interest ticks after every finished drive ----------

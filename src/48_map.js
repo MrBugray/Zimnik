@@ -655,7 +655,7 @@ class MapView {
       const E = ECON[p.node], jobs = G.econ.board(p.node, G), here = Object.keys(TRUCKS).filter(t => G.data.trucks[t].loc === p.node && !G.data.trucks[t].road).map(t => TRUCKS[t].name);
       const want = Object.keys(E.needs).sort((a, b) => G.econ.demand(p.node, b) - G.econ.demand(p.node, a)).map(c => CARGO[c].name.toLowerCase() + ' (' + G.econ.demandWord(G.econ.demand(p.node, c)) + ')');
       extra += '<div class="mst"><span>Makes</span><span>' + (E.makes.length ? E.makes.map(c => CARGO[c].name).join(', ') : '—') + '</span><span>Needs</span><span>' + (want.slice(0, 3).join(', ') || '—') + '</span>' +
-        (NODES[p.node].garage ? '<span>Workshop</span><span>yes</span>' : '') + (here.length ? '<span>Parked here</span><span>' + here.join(', ') + '</span>' : '') + '</div>';
+        '<span>Workshop</span><span>' + (NODES[p.node].garage ? 'yes — parts and repairs' : 'no repairs here') + '</span>' + (here.length ? '<span>Parked here</span><span>' + here.join(', ') + '</span>' : '') + '</div>';
       if (jobs.length) extra += '<h3>' + jobs.length + ' jobs here</h3>' + jobs.slice(0, 4).map(j => { const e = G.jobEstimate(j); return '<div class="mjob"><span>' + (j.kind === 'haul' ? CARGO[j.cargo].name + ' → ' + NODES[j.to].name : j.kind === 'rescue' ? 'Rescue on the ' + EDGES[j.edge].name : 'Tow to ' + NODES[j.to].name) + '</span><em>' + (e === null ? '—' : money(e)) + '</em></div>'; }).join('');
       const onRd = !this.here && G.roadOf();
       if (onRd) { const d = G.distFrom(p.node); if (d < Infinity) extra += '<p>From where your truck stands: ' + km(d) + ' km by road.</p>'; }
