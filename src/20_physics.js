@@ -610,7 +610,7 @@ class Truck {
     if (this.diff) { const d = this.driven; let sum = 0; for (const w of d) sum += w.body.getAngularVelocity(); const avg = sum / d.length; for (const w of d) w.body.setAngularVelocity(avg); }
     if (this.coup === 'lock') { const dir = this.gear < 0 ? -1 : 1; let wf = 0; for (const w of this.driven) wf -= w.body.getAngularVelocity(); wf = wf / this.driven.length * dir; this.we = Math.max(0, wf * this.ratio()); this.rpm = this.we * RPM; }
     const axW = ch.getWorldVector(V2(0, 1)), fwd = ch.getWorldVector(V2(1, 0));
-    let sinkSum = 0, nt = 0, hardGrip = 0, nd = 0, spin = 0;
+    let sinkSum = 0, nt = 0, hardGrip = 0, nd = 0, spin = 0, chainHard = 0;
     for (const w of this.wheels) {
       const rf = w.joint.getReactionForce(inv);
       const spring = Math.abs(rf.x * axW.x + rf.y * axW.y) + Math.abs(w.bump || 0);
@@ -632,6 +632,7 @@ class Truck {
         w.rollT = crr * w.load * this.r;
         sinkSum += w.sink; nt++;
         if (!w.front || this.awd) { nd++; if (S.mu > 0.5 && soft < 0.05) hardGrip++; }
+        if (w.surf === S_ROCK || w.surf === S_SLABS) chainHard++;
         spin += Math.max(0, Math.abs(w.slip) - 1.5);
         if (!w.flat && this.cond.tires < 0.25 && w.surf === S_ROCK && Math.abs(w.vt) > 3 && Math.random() < dt * (0.25 - this.cond.tires) * 0.4) { w.flat = true; if (this.isPlayer) sim.emit('flat', 'Puncture! The tires are worn out', 'bad'); }
       } else { w.sink *= 0.92; w.rollT = 0; w.bc = 0; }
@@ -709,9 +710,10 @@ class Truck {
       if (this.tireHeat > 2 && !this.warned.tires) { this.warned.tires = 1; sim.emit('tires', 'Tires overheating. Inflate above 1.3 bar', 'warn'); }
       if (this.tireHeat > 4) this.wear.tires += dt * 0.0012;
     } else this.tireHeat = Math.max(0, this.tireHeat - dt);
-    if (this.tire.maxKmh && Math.abs(this.vF) * 3.6 > this.tire.maxKmh) {
+    // chains rattle to pieces only on hard bare ground (rock, concrete); on snow and ice they last at any speed
+    if (this.tire.maxKmh && chainHard && Math.abs(this.vF) * 3.6 > this.tire.maxKmh) {
       this.chainT += dt; this.wear.tires += dt * 0.0015;
-      if (this.chainT > 1.5 && !this.warned.chains) { this.warned.chains = 1; sim.emit('chains', 'Too fast on chains! Keep under ' + this.tire.maxKmh + ' km/h', 'warn'); }
+      if (this.chainT > 1.5 && !this.warned.chains) { this.warned.chains = 1; sim.emit('chains', 'Too fast on chains on hard ground! Keep under ' + this.tire.maxKmh + ' km/h', 'warn'); }
     } else this.chainT = 0;
     if (this.rpm > this.eng.red * 1.12 && this.gear !== 0) {
       this.overRevT += dt; if (this.overRevT > 0.6) { this.damage = Math.min(100, this.damage + dt * 1.2); this.wear.engine += dt * 0.002; if (!this.warned.rev) { this.warned.rev = 1; sim.emit('rev', 'Over-revving! Shift up', 'bad'); } }

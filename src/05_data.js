@@ -68,7 +68,7 @@ const TIRES = {
   mt: { name: 'Mud-terrain', trucks: ['cc', 'bars', 'sk'], price: 2200, grip: [1.08, 1.18, 0.85, 0.95, 1.14, 1.06, 0.98, 0.92], roll: 1.15, wear: 1.2, look: 'mt', desc: 'Big lugs bite deep snow and ruts. Poor on ice.' },
   win: { name: 'Studded winter', trucks: ['cc', 'bars', 'sk'], price: 2600, grip: [1.06, 1.0, 2.1, 0.96, 1.0, 0.94, 1.05, 1.0], roll: 1.05, wear: 1.1, look: 'win', desc: 'Studs grip ice. Average in deep snow.' },
   hwy: { name: 'Highway', trucks: ['cc', 'sk'], price: 1200, grip: [0.86, 0.8, 0.92, 1.08, 0.85, 1.0, 1.05, 1.12], roll: 0.85, wear: 0.8, look: 'hwy', desc: 'Low rolling resistance, weak off-road.' },
-  chains: { name: 'Snow chains', trucks: ['cc', 'bars', 'sk'], price: 900, grip: [1.2, 1.15, 2.8, 0.9, 1.15, 0.86, 0.9, 0.8], roll: 1.25, wear: 2.5, look: 'chain', maxKmh: 45, desc: 'Best on ice and snow. Keep under 45 km/h.' },
+  chains: { name: 'Snow chains', trucks: ['cc', 'bars', 'sk'], price: 900, grip: [1.2, 1.15, 2.8, 0.9, 1.15, 0.86, 0.9, 0.8], roll: 1.25, wear: 2.5, look: 'chain', maxKmh: 45, desc: 'Best on ice and snow. Over 45 km/h on rock or concrete they tear.' },
 };
 const LIFTS = {
   // dr: tire radius added to the stock size (Polaris pickup 35", flatbed 37.5"); on the pickup a lift brings the
