@@ -336,27 +336,35 @@ class BgRenderer {
         if (key === 'win') return css(c);
         return css(fog > 0 ? mixc(c, fc, Math.min(1, fog)) : c);
       };
-      // far layer: the painted winter panorama, palette-tinted and mirror-tiled so it wraps seamlessly
-      if (li === 0 && typeof BG_PANO !== 'undefined' && BG_PANO.ready) {
+      // far layer: two painted panoramas joined into one wrap-around strip (A crossfading into B, B back into A),
+      // palette-tinted. Pinned to the base zoom so the backdrop never drifts after the truck stops.
+      if (li === 0 && typeof BG_PANO_A !== 'undefined' && BG_PANO_A.ready && BG_PANO_B.ready) {
         const key = R.palVer + ':' + Math.round(fog * 16);
         if (!this._pano || this._pano.key !== key) {
+          const A = BG_PANO_A, B = BG_PANO_B, f = Math.min(240, A.w >> 3, B.w >> 3), Lw = A.w + B.w - 2 * f;
+          // B with alpha ramps at both ends: it crossfades into A at the inner junction and across the wrap
+          const bc = document.createElement('canvas'); bc.width = B.w; bc.height = B.h;
+          const bgc = bc.getContext('2d');
+          bgc.drawImage(B.img, 0, 0);
+          const gr = bgc.createLinearGradient(0, 0, B.w, 0);
+          gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(f / B.w, 'rgba(0,0,0,1)');
+          gr.addColorStop(1 - f / B.w, 'rgba(0,0,0,1)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+          bgc.globalCompositeOperation = 'destination-in'; bgc.fillStyle = gr; bgc.fillRect(0, 0, B.w, B.h);
           const cv = (this._pano && this._pano.cv) || document.createElement('canvas');
-          cv.width = BG_PANO.w; cv.height = BG_PANO.h;
+          cv.width = Lw; cv.height = A.h;
           const g = cv.getContext('2d');
-          g.globalCompositeOperation = 'source-over'; g.clearRect(0, 0, cv.width, cv.height);
-          g.drawImage(BG_PANO.img, 0, 0);
-          g.globalCompositeOperation = 'multiply'; g.fillStyle = css(mulc([255, 255, 255], P.amb)); g.fillRect(0, 0, cv.width, cv.height);
-          if (fog > 0) { g.globalCompositeOperation = 'source-over'; g.fillStyle = css(P.fogc, Math.min(1, fog)); g.fillRect(0, 0, cv.width, cv.height); }
-          this._pano = { key, cv };
+          g.globalCompositeOperation = 'source-over'; g.clearRect(0, 0, Lw, cv.height);
+          g.drawImage(A.img, 0, 0);
+          g.drawImage(bc, A.w - f, 0);       // junction A → B inside the strip
+          g.drawImage(bc, A.w - f - Lw, 0);  // junction B → A across the wrap
+          g.globalCompositeOperation = 'multiply'; g.fillStyle = css(mulc([255, 255, 255], P.amb)); g.fillRect(0, 0, Lw, cv.height);
+          if (fog > 0) { g.globalCompositeOperation = 'source-over'; g.fillStyle = css(P.fogc, Math.min(1, fog)); g.fillRect(0, 0, Lw, cv.height); }
+          this._pano = { key, cv, w: Lw, h: A.h };
         }
-        const s2 = H * 0.60 / BG_PANO.h, tw = BG_PANO.w * s2, th = BG_PANO.h * s2, top = oy - th;
-        let n = Math.floor((-ox) / tw);
-        for (let sx = ox + n * tw; sx < W; sx += tw, n++) {
-          if (sx + tw < 0) continue;
-          if (n & 1) { ctx.save(); ctx.translate(Math.round(sx) + tw, top); ctx.scale(-1, 1); ctx.drawImage(this._pano.cv, 0, 0, tw, th); ctx.restore(); }
-          else ctx.drawImage(this._pano.cv, Math.round(sx), top, tw, th);
-        }
-        let yb = Math.floor(oy);
+        const ox0 = W / 2 - R.camX * L.p * (VIEW.h / 12.5) * R.k, oy0 = H * L.base;
+        const s2 = H * 0.60 / this._pano.h, tw = this._pano.w * s2, th = this._pano.h * s2, top = oy0 - th;
+        for (let sx = ox0 - Math.ceil(ox0 / tw) * tw; sx < W; sx += tw) ctx.drawImage(this._pano.cv, Math.round(sx), top, tw, th);
+        let yb = Math.floor(oy0);
         if (yb < H) {
           let to = Math.min(H, R.groundY || H);
           const N = LAYERS[1], noy = H * N.base + clamp(R.camDy * N.p * 0.1, -H * 0.06, H * 0.06) * ppm / 30;

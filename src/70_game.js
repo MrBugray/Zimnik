@@ -114,12 +114,13 @@ class Game {
     this.data = D; this.cash = D.cash || 0;
   }
   saveNow() {
+    if (this.dead) return;
     const D = this.data; D.cash = Math.round(this.cash); D.settings = this.settings; D.weather = this.weather; D.time = this.timeKey; D.timeFlow = this.timeFlow; D.truck = this.gid;
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(D)); } catch (e) { }
   }
   secret(k) { return !!this.data.secrets[k]; }
-  // wipe the save and boot fresh
-  newGame() { try { localStorage.removeItem(SAVE_KEY); } catch (e) {} location.reload(); }
+  // wipe the save and boot fresh; this.dead keeps the unload/visibility hooks from writing the old save back
+  newGame() { this.dead = true; try { localStorage.removeItem(SAVE_KEY); } catch (e) {} location.reload(); }
   get truck() { return (this.scene() === 'garage' ? this.gsim : this.sim).truck; }
   get loc() { return this.cfg().loc; }
   cfg(id) { return this.data.trucks[id || this.gid]; }
@@ -752,14 +753,17 @@ class Game {
   updateCamera(dt) {
     const tr = this.truck, p = ipos(tr.chassis), v = tr.chassis.getLinearVelocity();
     this.vSm = lerp(this.vSm, v.x, 1 - Math.exp(-dt / 0.8));
+    if (Math.abs(this.vSm) < 0.01) this.vSm = 0;
     const towing = !!this.sim.tow, semi = !!tr.semi;
     const base = VIEW.h / 12.5 * (semi ? 0.7 : towing ? 0.82 : 1);
     const ox = this.cam.x;
     this.cam.x = p.x;                      // hard lock: the truck never leaves the centre of the screen
     const ty = p.y + (semi ? 1.2 : 0.7);
     this.cam.y += (ty - this.cam.y) * (1 - Math.exp(-dt * 2.6));
+    if (Math.abs(ty - this.cam.y) < 0.002) this.cam.y = ty;   // settle fully: no endless micro-drift
     const tp = base * (1 - clamp(Math.abs(this.vSm) / 50, 0, 0.16));
     this.cam.ppm += (tp - this.cam.ppm) * (1 - Math.exp(-dt * 0.8));
+    if (Math.abs(tp - this.cam.ppm) < 0.005) this.cam.ppm = tp; // settle fully: the backdrop stands still at a stop
     this.camVx = lerp(this.camVx, dt > 0 ? (this.cam.x - ox) / dt : 0, 0.15);
   }
   update(dt) {

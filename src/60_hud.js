@@ -228,9 +228,9 @@ class Hud {
     b.addEventListener('pointerdown', e => {
       e.preventDefault(); this.G.sound.init();
       if (b.classList.contains('arm')) { fn(); return; }
-      b.classList.add('arm'); const em = b.querySelector('em'), was = em ? em.textContent : '';
-      if (em) em.textContent = 'Tap again';
-      setTimeout(() => { b.classList.remove('arm'); if (em) em.textContent = was; }, 3000);
+      b.classList.add('arm'); const em = b.querySelector('em'), was = em ? em.textContent : b.textContent;
+      if (em) em.textContent = 'Tap again'; else b.textContent = 'Tap again to be sure';
+      setTimeout(() => { b.classList.remove('arm'); if (em) em.textContent = was; else b.textContent = was; }, 3000);
     });
   }
   btn(id, fn) { const b = this.ov.querySelector('#' + id); if (b) b.addEventListener('pointerdown', e => { e.preventDefault(); this.G.sound.init(); fn(); }); }
