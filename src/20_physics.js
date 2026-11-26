@@ -428,9 +428,10 @@ class Truck {
     let n = 0; const ni = imp.normalImpulses; for (let i = 0; i < ni.length; i++) n += ni[i];
     const dv = n / this.mass;
     if (part.p === 'cab' && dv > 0.08) this.cabHit = true;
+    if (part.p === 'cab') return;   // the cab itself takes no damage
     if (dv > 0.6) {
       const front = part.p === 'hood' || part.p === 'bumper' || part.p === 'nose' || part.p === 'head';
-      let d = (dv - 0.6) * (part.p === 'cab' ? (this.addons.cage ? 4 : 10) : 4.5);   // a roll cage takes the blow off the cab
+      let d = (dv - 0.6) * 4.5;
       if (front && this.addons.bullbar) d *= 0.35;
       this.damage = Math.min(100, this.damage + d); this.hitT = 0.35;
       if (d > 1.2 && this.isPlayer) this.sim.emit('hit', 'Hard hit! Damage ' + Math.round(this.damage) + '%', 'warn');

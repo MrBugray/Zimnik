@@ -114,7 +114,7 @@ const CATNAME = { engine: 'Engine', gearbox: 'Gearbox', tires: 'Tires', lift: 'L
 const WEARCATS = ['engine', 'gearbox', 'tires', 'springs'];
 const ADDONS = {
   // the Polaris's expedition kit, off Lucas's parts sheet: cage, a loaded rack on top of it, rock sliders with a tank
-  cage: { name: 'Expedition cage', trucks: ['cc'], price: 1900, mass: 160, desc: 'Roll cage over the cab and bed, with a ladder and a rack frame on top. Guards the cab when it rolls.' },
+  cage: { name: 'Expedition cage', trucks: ['cc'], price: 1900, mass: 160, desc: 'Roll cage over the cab and bed, with a ladder and a rack frame on top. Carries the roof rack.' },
   rack: { name: 'Loaded roof rack', trucks: ['cc'], price: 900, mass: 140, needs: 'cage', desc: 'Crates and 60 L in jerry cans on top of the cage. Fitting it fits the cage too. Raises the centre of gravity.' },
   sliders: { name: 'Rock sliders + tank', trucks: ['cc'], price: 1400, mass: 90, desc: 'Steel sliders under the cab with an 80 L side tank. Saves the sills on rocks.' },
   bullbar: { name: 'Bull bar', trucks: ['cc', 'bars', 'sk'], price: 900, mass: 110, desc: 'Cuts front damage in hard hits. Adds weight up front.' },
